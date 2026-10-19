@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Letterpad — stationery-desk design system
+   Paper (warm) surfaces, ink type, copper accent.
+   ============================================================ */
+
+@theme {
+  --color-paper: #faf7f2;
+  --color-paper-dim: #f2ede4;
+  --color-ink: #1c2536;
+  --color-ink-soft: #33405c;
+  --color-muted: #5c6470;
+  --color-line: #e4ddd0;
+  --color-copper: #b4552d;
+  --color-copper-soft: #c97a52;
+  --color-forest: #2f5d50;
+  --color-red: #b3402f;
+  --color-amber: #c9821e;
+  --color-amber-ink: #8a5a12;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* Subtle paper grain for hero/landing sections */
+.paper-grain {
+  background-image: radial-gradient(
+    rgba(28, 37, 54, 0.035) 1px,
+    transparent 1px
+  );
+  background-size: 3px 3px;
+}
+
+/* The "sheet" used on the landing page mock + previews */
+.sheet-shadow {
+  box-shadow:
+    0 1px 2px rgba(28, 37, 54, 0.06),
+    0 12px 32px -8px rgba(28, 37, 54, 0.18);
+}
+
+::selection {
+  background: rgba(180, 85, 45, 0.2);
+}
