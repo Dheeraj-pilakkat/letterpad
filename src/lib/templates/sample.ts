@@ -1,14 +1,18 @@
 import type { Contact, LetterpadDoc, Workspace } from "@/lib/db/types";
-import { ObjectId } from "mongodb";
+import type { ObjectId } from "mongodb";
 import { todayIsoDate } from "@/lib/utils";
 
 /**
  * Sample workspace/document used by the template gallery thumbnails and
  * the landing page. Never touches the database.
+ *
+ * Ids are plain hex strings cast to ObjectId — these objects are passed from
+ * Server Components into the client PdfPreview, and real ObjectId instances
+ * carry a toJSON method that React's RSC serialization rejects.
  */
 
 export const sampleWorkspace: Workspace = {
-  _id: new ObjectId("000000000000000000000001"),
+  _id: "000000000000000000000001" as unknown as ObjectId,
   name: "Meridian Studio",
   slug: "meridian-studio",
   ownerUserId: "sample",
@@ -31,7 +35,7 @@ export const sampleWorkspace: Workspace = {
 };
 
 export const sampleContact: Contact = {
-  _id: new ObjectId("000000000000000000000002"),
+  _id: "000000000000000000000002" as unknown as ObjectId,
   workspaceId: sampleWorkspace._id,
   name: "Ananya Sharma",
   companyName: "Blue Fern Interiors",
@@ -90,7 +94,7 @@ export function sampleDocument(
   ) / 100;
 
   return {
-    _id: new ObjectId("000000000000000000000003"),
+    _id: "000000000000000000000003" as unknown as ObjectId,
     workspaceId: sampleWorkspace._id,
     type,
     templateId,

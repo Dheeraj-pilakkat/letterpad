@@ -324,7 +324,7 @@ export function CompanyForm({ workspace }: { workspace: WorkspaceDTO }) {
           <Field label="Tax ID / GSTIN">
             <Input name="taxId" defaultValue={workspace.taxId} />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Currency">
               <Select name="currency" defaultValue={workspace.currency}>
                 {CURRENCIES.map((c) => (

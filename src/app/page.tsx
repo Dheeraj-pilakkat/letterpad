@@ -41,13 +41,13 @@ export default function LandingPage() {
         </Link>
         <nav className="flex items-center gap-3">
           <Link
-            href="/auth/sign-in"
+            href="/sign-in"
             className="text-sm text-muted hover:text-ink"
           >
             Sign in
           </Link>
           <Link
-            href="/auth/sign-up"
+            href="/sign-up"
             className={buttonVariants("primary", "sm")}
           >
             Create account
@@ -72,11 +72,11 @@ export default function LandingPage() {
             and your totals already correct.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-4">
-            <Link href="/auth/sign-up" className={buttonVariants("accent", "md")}>
+            <Link href="/sign-up" className={buttonVariants("accent", "md")}>
               Create your letterhead
             </Link>
             <Link
-              href="/auth/sign-in"
+              href="/sign-in"
               className="text-sm text-ink underline underline-offset-4 hover:text-copper"
             >
               I already have an account
@@ -171,7 +171,7 @@ export default function LandingPage() {
             </p>
           </div>
           <Link
-            href="/auth/sign-up"
+            href="/sign-up"
             className="inline-flex h-11 items-center rounded-[3px] bg-copper px-6 text-sm font-medium text-white hover:bg-copper-soft"
           >
             Create account
