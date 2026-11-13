@@ -86,6 +86,24 @@ export default async function SettingsPage() {
             <Card>
               <div className="flex items-center justify-between gap-3">
                 <div>
+                  <h2 className="text-sm font-medium text-ink">Business profiles</h2>
+                  <p className="mt-1 text-xs text-muted">
+                    Issue documents under multiple identities with their own
+                    branding and numbering
+                  </p>
+                </div>
+                <Link
+                  href="/app/settings/profiles"
+                  className="inline-flex h-9 items-center rounded-[3px] border border-line bg-white px-4 text-sm text-ink hover:border-ink/40"
+                >
+                  Manage profiles →
+                </Link>
+              </div>
+            </Card>
+
+            <Card>
+              <div className="flex items-center justify-between gap-3">
+                <div>
                   <h2 className="text-sm font-medium text-ink">Public API</h2>
                   <p className="mt-1 text-xs text-muted">
                     Bearer keys for scripts and third-party integrations

@@ -2,6 +2,7 @@ import { MongoClient, type Db } from "mongodb";
 import type {
   ActivityEvent,
   AppNotification,
+  BusinessProfile,
   Contact,
   Counter,
   Expense,
@@ -191,6 +192,9 @@ async function ensureIndexes(db: Db): Promise<void> {
         { userId: 1, readAt: 1, createdAt: -1 },
         { name: "notifications_user_idx" },
       ),
+    db
+      .collection<BusinessProfile>("businessProfiles")
+      .createIndex({ workspaceId: 1, name: 1 }, { name: "profiles_workspace_idx" }),
   ]);
 }
 
@@ -214,6 +218,7 @@ export const collections = {
   invites: () => getDb().collection<WorkspaceInvite>("invites"),
   deliveries: () => getDb().collection<ScheduledDelivery>("deliveries"),
   notifications: () => getDb().collection<AppNotification>("notifications"),
+  businessProfiles: () => getDb().collection<BusinessProfile>("businessProfiles"),
 };
 
 /** Live (non-trashed) documents filter. `{ deletedAt: null }` matches missing or null. */

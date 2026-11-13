@@ -424,6 +424,8 @@ export interface LetterpadDoc {
   shareExpiresAt?: Date;
   /** Set when the owner was notified the share link is about to expire */
   shareExpiryNotifiedAt?: Date;
+  /** Business profile this document was issued under (§6); absent = workspace default */
+  profileId?: ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -466,8 +468,50 @@ export interface AppNotification {
 }
 
 export interface Counter {
-  _id: string; // `${workspaceId}:${type}`
+  _id: string; // `${workspaceId}:${type}` or `${workspaceId}:${profileId}:${type}`
   seq: number;
+}
+
+/**
+ * An additional business identity inside a workspace (§6). The workspace's own
+ * branding fields act as the default profile; documents stamped with a
+ * `profileId` render this profile's branding and use its numbering sequence.
+ */
+export interface BusinessProfile {
+  _id: ObjectId;
+  workspaceId: ObjectId;
+  /** Business name shown on documents issued under this profile */
+  name: string;
+  /** Data-URI image (png/jpeg), validated ≤ 700KB */
+  logo?: string;
+  signature?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  taxId?: string;
+  pan?: string;
+  upiId?: string;
+  paymentInstructions?: string;
+  bankDetails?: string;
+  gstEnabled?: boolean;
+  placeOfSupply?: string;
+  currency: string;
+  taxRate: number;
+  brandColor: string;
+  brandColors?: string[];
+  numberPrefixes?: Partial<Record<DocumentType, string>>;
+  numberPad?: number;
+  numberStarts?: Partial<Record<DocumentType, number>>;
+  taxConfig?: TaxConfig;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export type RecurrenceInterval =
@@ -507,6 +551,8 @@ export interface ScheduledDelivery {
 export interface RecurringSchedule {
   _id: ObjectId;
   workspaceId: ObjectId;
+  /** Business profile active when the schedule was created (§6) */
+  profileId?: ObjectId;
   contactId: ObjectId | null;
   type: DocumentType;
   templateId: string;

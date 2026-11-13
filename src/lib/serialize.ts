@@ -1,33 +1,42 @@
-import type { Contact, LetterpadDoc, Payment, Workspace } from "@/lib/db/types";
+import type { BusinessProfile, Contact, LetterpadDoc, Payment, Workspace } from "@/lib/db/types";
 import type { PdfContact, PdfDoc, PdfWorkspace } from "@/pdf/DocumentPdf";
 import type { EditorDoc } from "@/components/documents/document-editor";
 import type { ContactOption } from "@/components/documents/document-editor";
+import { overlayBranding } from "@/lib/branding";
 
 /** DB row → plain serializable shape for client components. */
 
-export function toPdfWorkspace(ws: Workspace): PdfWorkspace {
+/**
+ * Workspace branding → PDF shape. Pass the document's business profile (§6)
+ * to overlay its branding over the workspace defaults.
+ */
+export function toPdfWorkspace(
+  ws: Workspace,
+  profile?: BusinessProfile | null,
+): PdfWorkspace {
+  const b = overlayBranding(ws, profile);
   return {
-    name: ws.name,
-    logo: ws.logo,
-    signature: ws.signature,
-    addressLine1: ws.addressLine1,
-    addressLine2: ws.addressLine2,
-    city: ws.city,
-    state: ws.state,
-    postalCode: ws.postalCode,
-    country: ws.country,
-    phone: ws.phone,
-    email: ws.email,
-    website: ws.website,
-    taxId: ws.taxId,
-    pan: ws.pan,
-    upiId: ws.upiId,
-    paymentInstructions: ws.paymentInstructions,
-    bankDetails: ws.bankDetails,
-    brandColor: ws.brandColor,
-    brandColors: ws.brandColors,
-    taxRate: ws.taxRate,
-    taxLabel: ws.taxConfig?.label,
+    name: b.name,
+    logo: b.logo,
+    signature: b.signature,
+    addressLine1: b.addressLine1,
+    addressLine2: b.addressLine2,
+    city: b.city,
+    state: b.state,
+    postalCode: b.postalCode,
+    country: b.country,
+    phone: b.phone,
+    email: b.email,
+    website: b.website,
+    taxId: b.taxId,
+    pan: b.pan,
+    upiId: b.upiId,
+    paymentInstructions: b.paymentInstructions,
+    bankDetails: b.bankDetails,
+    brandColor: b.brandColor,
+    brandColors: b.brandColors,
+    taxRate: b.taxRate,
+    taxLabel: b.taxConfig?.label,
   };
 }
 

@@ -6,6 +6,7 @@ import { computeTotals } from "@/lib/validation/schemas";
 import { templateById } from "@/lib/templates/registry";
 import { todayIsoDate } from "@/lib/utils";
 import { logActivity } from "@/lib/activity";
+import { overlayBranding } from "@/lib/branding";
 import type { Workspace } from "@/lib/db/types";
 
 export type RunResult = { ok: boolean; error?: string; id?: string };
@@ -32,10 +33,20 @@ export async function runScheduleCore(
     const template = templateById(schedule.templateId);
     if (!template) return { ok: false, error: "Unknown template" };
 
+    // §6: schedules remember the profile they were created under — generated
+    // documents inherit it (branding overlay + separate numbering sequence).
+    const profile = schedule.profileId
+      ? await collections.businessProfiles().findOne({
+          _id: schedule.profileId,
+          workspaceId: workspace._id,
+        })
+      : null;
+    const brand = overlayBranding(workspace, profile);
     const number = await nextDocumentNumber(
       workspace._id.toHexString(),
       schedule.type,
-      numberingConfig(workspace, schedule.type),
+      numberingConfig(brand, schedule.type),
+      profile?._id.toHexString(),
     );
 
     const discount = schedule.discount;
@@ -50,6 +61,7 @@ export async function runScheduleCore(
     const insert = await collections.documents().insertOne({
       _id: new ObjectId(),
       workspaceId: workspace._id,
+      ...(profile ? { profileId: profile._id } : {}),
       type: schedule.type,
       templateId: schedule.templateId,
       number,

@@ -21,6 +21,8 @@ import { resolveGst } from "@/lib/finance";
 import { checkDocumentQuota, checkTemplateAccess } from "@/lib/plans";
 import { countDocumentsThisMonth } from "@/lib/documents-quota";
 import { queueWebhook } from "@/lib/webhooks";
+import { getActiveProfile, loadProfileForDoc } from "@/lib/profiles";
+import { overlayBranding } from "@/lib/branding";
 
 export type ActionResult = { ok: boolean; error?: string; id?: string };
 
@@ -44,16 +46,23 @@ export async function createDocumentAction(formData: FormData): Promise<void> {
     redirect(`/app/documents/new?type=${type}&error=${encodeURIComponent(quota.error ?? "Limit reached")}`);
   }
 
+  // §6: stamp the active business profile (if any) — its branding and
+  // numbering sequence apply to the new document.
+  const profile = await getActiveProfile(workspace._id);
+  const brand = overlayBranding(workspace, profile);
+
   const number = await nextDocumentNumber(
     workspace._id.toHexString(),
     type,
-    numberingConfig(workspace, type),
+    numberingConfig(brand, type),
+    profile?._id.toHexString(),
   );
   const now = new Date();
 
   const result = await collections.documents().insertOne({
     _id: new ObjectId(),
     workspaceId: workspace._id,
+    ...(profile ? { profileId: profile._id } : {}),
     type,
     templateId,
     number,
@@ -61,7 +70,7 @@ export async function createDocumentAction(formData: FormData): Promise<void> {
     title: "",
     contactId: null,
     issueDate: todayIsoDate(),
-    currency: workspace.currency,
+    currency: brand.currency,
     items: [],
     subtotal: 0,
     discountTotal: 0,
@@ -70,7 +79,7 @@ export async function createDocumentAction(formData: FormData): Promise<void> {
     content: { subject: "", body: "", terms: "" },
     layout: {
       ...template.layout,
-      accentColor: workspace.brandColors?.[0] ?? workspace.brandColor,
+      accentColor: brand.brandColors?.[0] ?? brand.brandColor,
     },
     createdBy: user.id,
     deletedAt: null,
@@ -93,7 +102,7 @@ export async function createDocumentAction(formData: FormData): Promise<void> {
     type,
     status: "draft",
     total: 0,
-    currency: workspace.currency,
+    currency: brand.currency,
   });
 
   revalidatePath("/app/documents");
@@ -162,12 +171,14 @@ export async function updateDocument(
           .contacts()
           .findOne({ _id: new ObjectId(data.contactId), workspaceId: workspace._id })
       : null;
+    // §6: GST settings come from the document's business profile when set.
+    const brand = overlayBranding(workspace, await loadProfileForDoc(existing));
     const gst = resolveGst({
-      enabled: workspace.gstEnabled === true,
+      enabled: brand.gstEnabled === true,
       taxTotal,
-      placeOfSupply: workspace.placeOfSupply,
-      workspaceState: workspace.state,
-      workspaceCountry: workspace.country,
+      placeOfSupply: brand.placeOfSupply,
+      workspaceState: brand.state,
+      workspaceCountry: brand.country,
       contactState: contact?.state,
       contactCountry: contact?.country,
     });
@@ -180,7 +191,7 @@ export async function updateDocument(
           templateId: data.templateId,
           layout: {
             ...template.layout,
-            accentColor: data.accentColor ?? workspace.brandColor,
+            accentColor: data.accentColor ?? brand.brandColor,
             columns: data.columns ?? existing.layout.columns,
             customColumns,
           },
@@ -290,10 +301,14 @@ export async function duplicateDocument(id: string): Promise<ActionResult> {
       .findOne({ _id: objectId, workspaceId: workspace._id, deletedAt: null });
     if (!existing) return { ok: false, error: "Document not found" };
 
+    // §6: duplicate keeps the source document's profile (and its sequence).
+    const dupProfile = await loadProfileForDoc(existing);
+    const dupBrand = overlayBranding(workspace, dupProfile);
     const number = await nextDocumentNumber(
       workspace._id.toHexString(),
       existing.type,
-      numberingConfig(workspace, existing.type),
+      numberingConfig(dupBrand, existing.type),
+      dupProfile?._id.toHexString(),
     );
     const now = new Date();
     // eslint-disable-next-line @typescript-eslint/no-unused-vars

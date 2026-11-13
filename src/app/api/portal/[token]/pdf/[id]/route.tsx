@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { getPortalDocument, recordPortalView } from "@/lib/actions/portal";
 import { toPdfContact, toPdfDoc, toPdfWorkspace } from "@/lib/serialize";
+import { loadProfileForDoc } from "@/lib/profiles";
 import { DocumentPdf } from "@/pdf/DocumentPdf";
 import { documentLabel } from "@/lib/templates/registry";
 
@@ -20,7 +21,7 @@ export async function GET(
 
   const buffer = await renderToBuffer(
     <DocumentPdf
-      workspace={toPdfWorkspace(workspace)}
+      workspace={toPdfWorkspace(workspace, await loadProfileForDoc(doc))}
       doc={toPdfDoc(doc)}
       contact={toPdfContact(contact)}
     />,

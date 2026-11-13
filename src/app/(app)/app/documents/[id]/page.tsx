@@ -6,6 +6,7 @@ import { listDocumentActivity } from "@/lib/activity";
 import { aiConfigured } from "@/lib/ai";
 import { hasPlanFeature } from "@/lib/plans";
 import { toContactOption, toEditorDoc, toPaymentDTO, toPdfWorkspace } from "@/lib/serialize";
+import { loadProfileForDoc } from "@/lib/profiles";
 import { razorpayKeyIdFor } from "@/lib/razorpay";
 import { DocumentEditor } from "@/components/documents/document-editor";
 
@@ -48,7 +49,7 @@ export default async function DocumentPage({
 
   return (
     <DocumentEditor
-      workspace={toPdfWorkspace(workspace)}
+      workspace={toPdfWorkspace(workspace, await loadProfileForDoc(doc))}
       doc={toEditorDoc(doc)}
       contacts={contacts.map(toContactOption)}
       payments={payments.map(toPaymentDTO)}

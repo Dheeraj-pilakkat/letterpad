@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { authClient } from "@/components/auth/auth-provider";
 import { WorkspaceSwitcher, type WorkspaceOption } from "@/components/app/workspace-switcher";
+import { ProfileSwitcher, type ProfileOption } from "@/components/app/profile-switcher";
 import {
   NotificationBell,
   type BellNotification,
@@ -47,6 +48,8 @@ export function Sidebar({
   userEmail,
   workspaces,
   currentWorkspaceId,
+  profiles = [],
+  currentProfileId = "",
   notifications = [],
   unreadCount = 0,
   isAdmin = false,
@@ -56,6 +59,8 @@ export function Sidebar({
   userEmail: string;
   workspaces: WorkspaceOption[];
   currentWorkspaceId: string;
+  profiles?: ProfileOption[];
+  currentProfileId?: string;
   notifications?: BellNotification[];
   unreadCount?: number;
   isAdmin?: boolean;
@@ -177,6 +182,15 @@ export function Sidebar({
                     currentId={currentWorkspaceId}
                     compact
                   />
+                  {profiles.length > 0 ? (
+                    <div className="mt-1.5">
+                      <ProfileSwitcher
+                        profiles={profiles}
+                        currentId={currentProfileId}
+                        compact
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <button
@@ -231,6 +245,14 @@ export function Sidebar({
           </div>
           <div className="mt-2">
             <WorkspaceSwitcher workspaces={workspaces} currentId={currentWorkspaceId} />
+            {profiles.length > 0 ? (
+              <div className="mt-1.5">
+                <ProfileSwitcher
+                  profiles={profiles}
+                  currentId={currentProfileId}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
 

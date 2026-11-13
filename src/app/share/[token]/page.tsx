@@ -5,6 +5,8 @@ import { getSharedDocument, recordShareView } from "@/lib/actions/sharing";
 import { hasPlanFeature } from "@/lib/plans";
 import { documentLabel } from "@/lib/templates/registry";
 import { formatDate, formatMoney } from "@/lib/utils";
+import { loadProfileForDoc } from "@/lib/profiles";
+import { overlayBranding } from "@/lib/branding";
 import { StatusBadge, TypeBadge } from "@/components/ui/badge";
 
 export const metadata: Metadata = {
@@ -34,7 +36,10 @@ export default async function SharePage({
     );
   }
 
-  const { doc, workspace, contact } = shared;
+  // §6: shared documents render their business profile's branding.
+  const sharedProfile = await loadProfileForDoc(shared.doc);
+  const workspace = overlayBranding(shared.workspace, sharedProfile);
+  const { doc, contact } = shared;
   await recordShareView(token);
 
   const label = documentLabel(doc.type, doc.templateId);

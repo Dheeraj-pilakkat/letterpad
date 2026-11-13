@@ -14,6 +14,8 @@ import { templateById, templatesForType } from "@/lib/templates/registry";
 import { todayIsoDate } from "@/lib/utils";
 import type { ActionResult } from "@/lib/actions/documents";
 import type { DocumentItem, TemplateLayout } from "@/lib/db/types";
+import { loadProfileForDoc } from "@/lib/profiles";
+import { overlayBranding } from "@/lib/branding";
 
 /** Invoice template matching the quotation's style (quote-classic → invoice-classic). */
 function invoiceTemplateId(quoteTemplateId: string): string {
@@ -66,10 +68,14 @@ export async function convertToInvoiceAction(id: string): Promise<ActionResult> 
       return { ok: false, error: "No invoice template available" };
     }
 
+    // §6: converted invoice inherits the quotation's business profile.
+    const profile = await loadProfileForDoc(quote);
+    const brand = overlayBranding(workspace, profile);
     const number = await nextDocumentNumber(
       workspace._id.toHexString(),
       "invoice",
-      numberingConfig(workspace, "invoice"),
+      numberingConfig(brand, "invoice"),
+      profile?._id.toHexString(),
     );
 
     const items: DocumentItem[] = quote.items.map((item) => ({ ...item }));
@@ -84,18 +90,18 @@ export async function convertToInvoiceAction(id: string): Promise<ActionResult> 
           .findOne({ _id: quote.contactId, workspaceId: workspace._id })
       : null;
     const gst = resolveGst({
-      enabled: workspace.gstEnabled === true,
+      enabled: brand.gstEnabled === true,
       taxTotal: totals.taxTotal,
-      placeOfSupply: workspace.placeOfSupply,
-      workspaceState: workspace.state,
-      workspaceCountry: workspace.country,
+      placeOfSupply: brand.placeOfSupply,
+      workspaceState: brand.state,
+      workspaceCountry: brand.country,
       contactState: contact?.state,
       contactCountry: contact?.country,
     });
 
     const layout: TemplateLayout = {
       ...template.layout,
-      accentColor: quote.layout.accentColor ?? workspace.brandColor,
+      accentColor: quote.layout.accentColor ?? brand.brandColor,
       columns: quote.layout.columns ?? template.layout.columns,
       customColumns: quote.layout.customColumns ?? [],
     };
@@ -103,6 +109,7 @@ export async function convertToInvoiceAction(id: string): Promise<ActionResult> 
     const insert = await collections.documents().insertOne({
       _id: new ObjectId(),
       workspaceId: workspace._id,
+      ...(profile ? { profileId: profile._id } : {}),
       type: "invoice",
       templateId,
       number,

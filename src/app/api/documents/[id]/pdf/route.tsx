@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth/config";
 import { collections } from "@/lib/db/client";
 import { resolveWorkspace, toObjectId } from "@/lib/auth/session";
 import { toPdfContact, toPdfDoc, toPdfWorkspace } from "@/lib/serialize";
+import { loadProfileForDoc } from "@/lib/profiles";
 import { DocumentPdf } from "@/pdf/DocumentPdf";
 import { documentLabel } from "@/lib/templates/registry";
 
@@ -45,7 +46,7 @@ export async function GET(
 
   const buffer = await renderToBuffer(
     <DocumentPdf
-      workspace={toPdfWorkspace(workspace)}
+      workspace={toPdfWorkspace(workspace, await loadProfileForDoc(doc))}
       doc={toPdfDoc(doc)}
       contact={contact ? toPdfContact(contact) : null}
     />,

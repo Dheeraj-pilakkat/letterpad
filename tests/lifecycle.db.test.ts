@@ -13,6 +13,7 @@ import type { auth } from "@/lib/auth/config";
 const state = vi.hoisted(() => ({
   cookie: "",
   wsCookie: "",
+  profileCookie: "",
 }));
 
 // Server-only boundary marker — meaningless under Vitest (node env).
@@ -21,10 +22,21 @@ vi.mock("server-only", () => ({}));
 vi.mock("next/headers", () => ({
   headers: async () => new Headers({ cookie: state.cookie }),
   cookies: async () => ({
-    get: (name: string) =>
-      name === "lp_ws" && state.wsCookie ? { name, value: state.wsCookie } : undefined,
-    set: () => {},
-    delete: () => {},
+    get: (name: string) => {
+      if (name === "lp_ws" && state.wsCookie) {
+        return { name, value: state.wsCookie };
+      }
+      if (name === "lp_profile" && state.profileCookie) {
+        return { name, value: state.profileCookie };
+      }
+      return undefined;
+    },
+    set: (name: string, value: string) => {
+      if (name === "lp_profile") state.profileCookie = value;
+    },
+    delete: (name: string) => {
+      if (name === "lp_profile") state.profileCookie = "";
+    },
   }),
 }));
 
@@ -725,5 +737,238 @@ describe.skipIf(!hasDb)("in-app notifications (DB)", () => {
         },
       );
     expect(await runShareExpiryNotifications()).toBe(0);
+  });
+});
+
+describe.skipIf(!hasDb)("business profiles (DB)", () => {
+  const stamp = Date.now();
+  const email = `e2e-profile-${stamp}@example.test`;
+  const memberEmail = `e2e-profile-member-${stamp}@example.test`;
+  const password = "Sup3rSecret!1";
+  let ownerId = "";
+  let memberId = "";
+  let workspaceId: ObjectId;
+  let profileId = "";
+  let foreignProfileId = "";
+  let docId: ObjectId | null = null;
+  let ownerCookie = "";
+
+  /** `redirect()` throws with a NEXT_REDIRECT digest — return its URL. */
+  async function catchRedirect(fn: () => Promise<unknown>): Promise<string> {
+    try {
+      await fn();
+      return "";
+    } catch (e) {
+      const digest = (e as { digest?: string }).digest ?? "";
+      if (digest.startsWith("NEXT_REDIRECT")) {
+        return digest.split(";")[2] ?? "";
+      }
+      throw e;
+    }
+  }
+
+  beforeAll(async () => {
+    const { auth } = await import("@/lib/auth/config");
+    const { collections, getDb } = await import("@/lib/db/client");
+    await auth.api.signUpEmail({
+      body: { email, password, name: "E2E Profile" },
+      headers: new Headers(ORIGIN),
+    });
+    await auth.api.signUpEmail({
+      body: { email: memberEmail, password, name: "E2E Profile Member" },
+      headers: new Headers(ORIGIN),
+    });
+    ownerCookie = await signInCookie(auth, email, password);
+    state.cookie = ownerCookie;
+
+    const owner = await getDb().collection("user").findOne({ email });
+    const member = await getDb().collection("user").findOne({ email: memberEmail });
+    ownerId = (owner?._id as ObjectId).toHexString();
+    memberId = (member?._id as ObjectId).toHexString();
+
+    const now = new Date();
+    workspaceId = new ObjectId();
+    await collections.workspaces().insertOne({
+      _id: workspaceId,
+      name: "E2E Profile WS",
+      slug: `e2e-profile-${stamp}`,
+      ownerUserId: ownerId,
+      currency: "USD",
+      taxRate: 0,
+      brandColor: "#B4552D",
+      brandColors: ["#B4552D"],
+      logo: "data:image/png;base64,wslogo",
+      city: "Mumbai",
+      members: [
+        { userId: memberId, name: "E2E Profile Member", email: memberEmail, role: "member", addedAt: now },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    } as never);
+    state.wsCookie = workspaceId.toHexString();
+
+    // A profile belonging to a different workspace (isolation fixture).
+    foreignProfileId = new ObjectId().toHexString();
+    await collections.businessProfiles().insertOne({
+      _id: new ObjectId(foreignProfileId),
+      workspaceId: new ObjectId(),
+      name: "Foreign profile",
+      currency: "EUR",
+      taxRate: 20,
+      brandColor: "#000000",
+      createdBy: "someone-else",
+      createdAt: now,
+      updatedAt: now,
+    } as never);
+  });
+
+  afterAll(async () => {
+    state.cookie = "";
+    state.wsCookie = "";
+    state.profileCookie = "";
+    if (!hasDb) return;
+    const { collections, getDb } = await import("@/lib/db/client");
+    try {
+      const uid = new ObjectId(ownerId);
+      const mid = new ObjectId(memberId);
+      await getDb().collection("session").deleteMany({ userId: { $in: [uid, mid] } });
+      await getDb().collection("account").deleteMany({ userId: { $in: [uid, mid] } });
+      await getDb().collection("user").deleteMany({ _id: { $in: [uid, mid] } });
+      await collections.workspaces().deleteOne({ _id: workspaceId });
+      await collections.businessProfiles().deleteMany({ workspaceId });
+      await collections
+        .businessProfiles()
+        .deleteOne({ _id: new ObjectId(foreignProfileId) });
+      await collections
+        .counters()
+        .deleteMany({ _id: { $regex: `^${workspaceId.toHexString()}:` } });
+      if (docId) await collections.documents().deleteOne({ _id: docId });
+      await collections.activity().deleteMany({ workspaceId });
+    } catch {
+      /* best-effort cleanup */
+    }
+  });
+
+  it("creates a profile that snapshots the workspace branding", async () => {
+    const { createProfileAction } = await import("@/lib/actions/profiles");
+    const { listProfiles } = await import("@/lib/profiles");
+    const fd = new FormData();
+    fd.set("name", "Acme US Inc");
+    const res = await createProfileAction(fd);
+    expect(res.ok).toBe(true);
+    profileId = res.id ?? "";
+    expect(profileId).toMatch(/^[0-9a-f]{24}$/);
+
+    const [profile] = await listProfiles(workspaceId);
+    expect(profile?.name).toBe("Acme US Inc");
+    // Snapshotted from the workspace letterhead (copy-on-create).
+    expect(profile?.currency).toBe("USD");
+    expect(profile?.brandColor).toBe("#B4552D");
+    expect(profile?.city).toBe("Mumbai");
+    expect(profile?.logo).toBe("data:image/png;base64,wslogo");
+  });
+
+  it("denies profile management to members but lets them switch", async () => {
+    const { createProfileAction, switchProfileAction, deleteProfileAction } =
+      await import("@/lib/actions/profiles");
+    const { auth } = await import("@/lib/auth/config");
+    state.cookie = await signInCookie(auth, memberEmail, password);
+
+    const fd = new FormData();
+    fd.set("name", "Sneaky profile");
+    const denied = await createProfileAction(fd);
+    expect(denied.ok).toBe(false);
+    expect(denied.error).toMatch(/owners and admins/i);
+    const deniedDelete = await deleteProfileAction(profileId);
+    expect(deniedDelete.ok).toBe(false);
+
+    // Switching is allowed for any member.
+    const switched = await switchProfileAction(profileId);
+    expect(switched.ok).toBe(true);
+    expect(state.profileCookie).toBe(profileId);
+    const cleared = await switchProfileAction("");
+    expect(cleared.ok).toBe(true);
+    expect(state.profileCookie).toBe("");
+
+    state.cookie = ownerCookie;
+  });
+
+  it("refuses to activate a profile from another workspace", async () => {
+    const { switchProfileAction } = await import("@/lib/actions/profiles");
+    const { getActiveProfile } = await import("@/lib/profiles");
+    const res = await switchProfileAction(foreignProfileId);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/not found/i);
+    expect(state.profileCookie).toBe("");
+
+    // Even a forged cookie pointing at a foreign profile resolves to null.
+    state.profileCookie = foreignProfileId;
+    expect(await getActiveProfile(workspaceId)).toBeNull();
+    state.profileCookie = "";
+  });
+
+  it("keeps a separate numbering sequence per profile", async () => {
+    const { nextDocumentNumber } = await import("@/lib/counters");
+    const wsHex = workspaceId.toHexString();
+
+    const default1 = await nextDocumentNumber(wsHex, "invoice");
+    const profile1 = await nextDocumentNumber(wsHex, "invoice", undefined, profileId);
+    const default2 = await nextDocumentNumber(wsHex, "invoice");
+
+    expect(default1).toBe("INV-0001");
+    // The profile sequence starts from scratch, independent of the default.
+    expect(profile1).toBe("INV-0001");
+    expect(default2).toBe("INV-0002");
+  });
+
+  it("stamps new documents with the active profile", async () => {
+    const { createDocumentAction } = await import("@/lib/actions/documents");
+    const { collections } = await import("@/lib/db/client");
+    state.profileCookie = profileId;
+
+    const fd = new FormData();
+    fd.set("type", "invoice");
+    fd.set("templateId", "invoice-classic");
+    const url = await catchRedirect(() => createDocumentAction(fd));
+    expect(url).toMatch(/^\/app\/documents\/[0-9a-f]{24}$/);
+    docId = new ObjectId(url.split("/").pop());
+
+    const doc = await collections.documents().findOne({ _id: docId });
+    expect(doc?.profileId?.toHexString()).toBe(profileId);
+    // Profile sequence continues from the earlier nextDocumentNumber call.
+    expect(doc?.number).toBe("INV-0002");
+
+    state.profileCookie = "";
+  });
+
+  it("updates and deletes the profile", async () => {
+    const { updateProfileAction, deleteProfileAction } = await import(
+      "@/lib/actions/profiles"
+    );
+    const { listProfiles } = await import("@/lib/profiles");
+    const { collections } = await import("@/lib/db/client");
+
+    const fd = new FormData();
+    fd.set("name", "Acme US Inc (renamed)");
+    // The real edit form (CompanyForm) always submits these required fields.
+    fd.set("currency", "USD");
+    fd.set("taxRate", "0");
+    fd.set("brandColor", "#B4552D");
+    const updated = await updateProfileAction(profileId, fd);
+    expect(updated.ok).toBe(true);
+    const afterUpdate = await collections
+      .businessProfiles()
+      .findOne({ _id: new ObjectId(profileId) });
+    expect(afterUpdate?.name).toBe("Acme US Inc (renamed)");
+
+    // Deleting the active profile clears the cookie.
+    state.profileCookie = profileId;
+    const deleted = await deleteProfileAction(profileId);
+    expect(deleted.ok).toBe(true);
+    expect(state.profileCookie).toBe("");
+    expect(
+      await collections.businessProfiles().findOne({ _id: new ObjectId(profileId) }),
+    ).toBeNull();
+    expect(await listProfiles(workspaceId)).toHaveLength(0);
   });
 });

@@ -87,7 +87,18 @@ function ImagePicker({
   );
 }
 
-export function CompanyForm({ workspace }: { workspace: WorkspaceDTO }) {
+export function CompanyForm({
+  workspace,
+  submit,
+  submitLabel = "Save letterhead",
+  flashMessage = "Saved — new documents use these details.",
+}: {
+  workspace: WorkspaceDTO;
+  /** Override the save target (defaults to `updateWorkspace`) — used by business profiles. */
+  submit?: (fd: FormData) => Promise<{ error?: string } | undefined>;
+  submitLabel?: string;
+  flashMessage?: string;
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState(false);
@@ -148,7 +159,8 @@ export function CompanyForm({ workspace }: { workspace: WorkspaceDTO }) {
     setError(null);
     setFlash(false);
     startTransition(async () => {
-      const res = await updateWorkspace(fd);
+      const action = submit ?? updateWorkspace;
+      const res = await action(fd);
       if (res?.error) {
         setError(res.error);
         return;
@@ -496,9 +508,9 @@ export function CompanyForm({ workspace }: { workspace: WorkspaceDTO }) {
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={pending}>
           {pending ? <Spinner /> : null}
-          Save letterhead
+          {submitLabel}
         </Button>
-        {flash ? <span className="text-sm text-forest">Saved — new documents use these details.</span> : null}
+        {flash ? <span className="text-sm text-forest">{flashMessage}</span> : null}
       </div>
     </form>
   );

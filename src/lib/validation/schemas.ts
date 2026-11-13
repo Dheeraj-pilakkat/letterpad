@@ -84,6 +84,43 @@ export const workspaceSchema = z.object({
 
 export type WorkspaceInput = z.infer<typeof workspaceSchema>;
 
+/**
+ * Business profile (§6): a second identity inside a workspace. Branding
+ * subset of `workspaceSchema` — no payment keys or workspace-only settings.
+ */
+export const profileSchema = workspaceSchema.pick({
+  name: true,
+  logo: true,
+  signature: true,
+  addressLine1: true,
+  addressLine2: true,
+  city: true,
+  state: true,
+  postalCode: true,
+  country: true,
+  phone: true,
+  email: true,
+  website: true,
+  taxId: true,
+  pan: true,
+  upiId: true,
+  paymentInstructions: true,
+  bankDetails: true,
+  gstEnabled: true,
+  placeOfSupply: true,
+  currency: true,
+  taxRate: true,
+  taxLabel: true,
+  taxCountry: true,
+  brandColor: true,
+  brandColors: true,
+  numberPrefixes: true,
+  numberPad: true,
+  numberStarts: true,
+});
+
+export type ProfileInput = z.infer<typeof profileSchema>;
+
 export const contactSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
   companyName: z.string().trim().max(160).optional(),

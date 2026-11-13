@@ -11,6 +11,8 @@ import { documentLabel } from "@/lib/templates/registry";
 import { hasPlanFeature } from "@/lib/plans";
 import { formatDate, formatMoney } from "@/lib/utils";
 import { isRazorpayConfigured, razorpayKeyIdFor } from "@/lib/razorpay";
+import { loadProfileForDoc } from "@/lib/profiles";
+import { overlayBranding } from "@/lib/branding";
 import { StatusBadge, TypeBadge } from "@/components/ui/badge";
 import { ApproveRejectButtons } from "@/components/portal/approve-reject-buttons";
 import { SignaturePanel } from "@/components/portal/signature-panel";
@@ -31,7 +33,10 @@ export default async function PortalDocumentPage({
   if (!data) notFound();
   await recordPortalView(token, id);
 
-  const { workspace, contact, doc } = data;
+  // §6: portal documents render their business profile's branding.
+  const profile = await loadProfileForDoc(data.doc);
+  const workspace = overlayBranding(data.workspace, profile);
+  const { contact, doc } = data;
   const portal = await getPortal(token);
   const label = documentLabel(doc.type, doc.templateId);
   const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";

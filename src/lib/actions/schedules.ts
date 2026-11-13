@@ -13,6 +13,8 @@ import type {
   RecurrenceInterval,
   ScheduleStatus,
 } from "@/lib/db/types";
+import { getActiveProfile } from "@/lib/profiles";
+import { overlayBranding } from "@/lib/branding";
 
 export type ActionResult = { ok: boolean; error?: string; id?: string };
 
@@ -64,9 +66,13 @@ export async function createSchedule(
     }));
 
     const now = new Date();
+    // §6: stamp the active profile so generated documents keep its identity.
+    const profile = await getActiveProfile(workspace._id);
+    const brand = overlayBranding(workspace, profile);
     const result = await collections.schedules().insertOne({
       _id: new ObjectId(),
       workspaceId: workspace._id,
+      ...(profile ? { profileId: profile._id } : {}),
       contactId,
       type: input.type,
       templateId: input.templateId,
@@ -77,7 +83,7 @@ export async function createSchedule(
       endDate: input.endDate || undefined,
       nextRunAt: input.startDate,
       runCount: 0,
-      currency: input.currency || workspace.currency,
+      currency: input.currency || brand.currency,
       items,
       discount: input.discount,
       content: {
@@ -87,7 +93,7 @@ export async function createSchedule(
       },
       layout: {
         ...template.layout,
-        accentColor: workspace.brandColors?.[0] ?? workspace.brandColor,
+        accentColor: brand.brandColors?.[0] ?? brand.brandColor,
       },
       createdBy: user.id,
       createdAt: now,

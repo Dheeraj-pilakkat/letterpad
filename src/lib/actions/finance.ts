@@ -9,6 +9,8 @@ import { balanceOf, notePayload, paymentRequestPayload } from "@/lib/finance";
 import { numberingConfig } from "@/lib/recurring";
 import { logActivity } from "@/lib/activity";
 import { formatMoney } from "@/lib/utils";
+import { loadProfileForDoc } from "@/lib/profiles";
+import { overlayBranding } from "@/lib/branding";
 
 export type ActionResult = { ok: boolean; error?: string; id?: string };
 
@@ -33,22 +35,27 @@ export async function createPaymentRequestAction(
     const balance = balanceOf(invoice.total, payments);
     if (balance <= 0) return { ok: false, error: "This bill is fully paid" };
 
+    // §6: inherit the invoice's business profile (branding + sequence).
+    const profile = await loadProfileForDoc(invoice);
+    const brand = overlayBranding(workspace, profile);
     const payload = paymentRequestPayload(invoice, balance);
     const number = await nextDocumentNumber(
       workspace._id.toHexString(),
       "request",
-      numberingConfig(workspace, "request"),
+      numberingConfig(brand, "request"),
+      profile?._id.toHexString(),
     );
     const now = new Date();
     const result = await collections.documents().insertOne({
       _id: new ObjectId(),
       workspaceId: workspace._id,
+      ...(profile ? { profileId: profile._id } : {}),
       ...payload,
       number,
       contactId: payload.contactId ? new ObjectId(payload.contactId) : null,
       layout: {
         ...(invoice.layout ?? {}),
-        accentColor: workspace.brandColors?.[0] ?? workspace.brandColor,
+        accentColor: brand.brandColors?.[0] ?? brand.brandColor,
       },
       createdBy: user.id,
       deletedAt: null,
@@ -101,16 +108,21 @@ export async function createNoteAction(
       return { ok: false, error: "Notes are issued against bills" };
     }
 
+    // §6: notes inherit the invoice's business profile (branding + sequence).
+    const profile = await loadProfileForDoc(invoice);
+    const brand = overlayBranding(workspace, profile);
     const payload = notePayload(invoice, kind);
     const number = await nextDocumentNumber(
       workspace._id.toHexString(),
       kind,
-      numberingConfig(workspace, kind),
+      numberingConfig(brand, kind),
+      profile?._id.toHexString(),
     );
     const now = new Date();
     const result = await collections.documents().insertOne({
       _id: new ObjectId(),
       workspaceId: workspace._id,
+      ...(profile ? { profileId: profile._id } : {}),
       ...payload,
       number,
       contactId: payload.contactId ? new ObjectId(payload.contactId) : null,
