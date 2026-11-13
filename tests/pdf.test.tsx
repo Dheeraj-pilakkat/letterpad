@@ -32,6 +32,28 @@ describe("PDF generation (Phase 1 milestone)", () => {
       expect(buffer.subarray(0, 4).toString("ascii")).toBe("%PDF");
     }
   }, 60000);
+
+  it("renders a GST invoice with HSN column and reverse charge", async () => {
+    const layout = templateById("invoice-classic")?.layout ?? {};
+    const doc = {
+      ...sampleDocument("invoice", "invoice-classic", layout),
+      reverseCharge: true,
+      items: sampleDocument("invoice", "invoice-classic", layout).items.map((item) => ({
+        ...item,
+        hsn: "998314",
+      })),
+      layout: { ...layout, columns: { hsn: true } },
+    };
+    const buffer = await renderToBuffer(
+      <DocumentPdf workspace={sampleWorkspace} doc={doc} contact={sampleContact} />,
+    );
+    expect(buffer.subarray(0, 4).toString("ascii")).toBe("%PDF");
+  }, 20000);
+
+  it("renders the proforma invoice title", async () => {
+    const buffer = await renderTemplate("invoice-proforma", "invoice");
+    expect(buffer.subarray(0, 4).toString("ascii")).toBe("%PDF");
+  }, 20000);
 });
 
 describe("share helpers", () => {

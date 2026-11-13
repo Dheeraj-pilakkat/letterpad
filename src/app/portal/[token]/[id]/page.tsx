@@ -131,6 +131,9 @@ export default async function PortalDocumentPage({
                 <thead>
                   <tr className="border-b border-line text-left text-xs text-muted">
                     <th className="py-2 pr-3">Description</th>
+                    {doc.layout.columns?.hsn === true ? (
+                      <th className="py-2 pr-3">HSN/SAC</th>
+                    ) : null}
                     <th className="py-2 pr-3 text-right">Qty</th>
                     <th className="py-2 pr-3 text-right">Price</th>
                     <th className="py-2 text-right">Amount</th>
@@ -140,6 +143,9 @@ export default async function PortalDocumentPage({
                   {doc.items.map((item, i) => (
                     <tr key={`${item.description}-${i}`}>
                       <td className="py-2 pr-3 text-ink">{item.description}</td>
+                      {doc.layout.columns?.hsn === true ? (
+                        <td className="py-2 pr-3 text-muted">{item.hsn || "—"}</td>
+                      ) : null}
                       <td className="py-2 pr-3 text-right tabular-nums">{item.quantity}</td>
                       <td className="py-2 pr-3 text-right tabular-nums">
                         {formatMoney(item.unitPrice, doc.currency)}
@@ -179,6 +185,12 @@ export default async function PortalDocumentPage({
                 <span className="tabular-nums text-ink">
                   {formatMoney(doc.taxTotal, doc.currency)}
                 </span>
+              </div>
+            ) : null}
+            {doc.reverseCharge ? (
+              <div className="flex justify-between text-muted">
+                <span>Reverse charge</span>
+                <span className="text-ink">Payable by recipient</span>
               </div>
             ) : null}
             <div className="flex justify-between border-t border-line pt-2 font-medium text-ink">

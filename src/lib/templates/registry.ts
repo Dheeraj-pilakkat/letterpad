@@ -112,6 +112,15 @@ export const TEMPLATES: TemplateDef[] = [
     premium: true,
   },
   {
+    id: "invoice-proforma",
+    type: "invoice",
+    name: "Proforma Invoice",
+    kind: "itemized",
+    description:
+      "Pre-shipment proforma on the classic bill layout — shares the INV number sequence.",
+    layout: { headerStyle: "left", fontPair: "mixed", showLogo: true },
+  },
+  {
     id: "request-payment",
     type: "request",
     name: "Payment Request",
@@ -240,6 +249,11 @@ export function isItemized(type: DocumentType, templateId: string): boolean {
 
 /** Filename / heading label for a document, e.g. "Payment Request" */
 export function documentLabel(type: DocumentType, templateId: string): string {
+  // §16: the proforma is a template, not its own DocumentType — it keeps the
+  // invoice number sequence but is titled as a proforma.
+  if (type === "invoice" && templateId === "invoice-proforma") {
+    return "Proforma Invoice";
+  }
   if (type === "request") {
     return templateById(templateId)?.kind === "itemized"
       ? "Payment Request"

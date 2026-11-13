@@ -37,6 +37,7 @@ export function toPdfWorkspace(
     brandColors: b.brandColors,
     taxRate: b.taxRate,
     taxLabel: b.taxConfig?.label,
+    gstEnabled: b.gstEnabled,
   };
 }
 
@@ -59,6 +60,7 @@ export function toEditorDoc(doc: LetterpadDoc): EditorDoc {
     total: doc.total,
     discount: doc.discount,
     gst: doc.gst ?? undefined,
+    reverseCharge: doc.reverseCharge,
     content: doc.content,
     layout: doc.layout,
     shareEnabled: doc.shareEnabled ?? false,

@@ -219,6 +219,8 @@ export interface LineItemColumns {
   qty?: boolean;
   unitPrice?: boolean;
   tax?: boolean;
+  /** §16 show the HSN/SAC code column on GST invoices */
+  hsn?: boolean;
 }
 
 export interface TemplateLayout {
@@ -358,6 +360,8 @@ export interface DocumentItem {
   taxRate: number;
   /** Net line total (qty × unit price), tax excluded */
   amount: number;
+  /** §16 HSN/SAC code for this line (GST invoices) */
+  hsn?: string;
   /** User-defined custom column values, keyed by CustomColumn.id */
   values?: Record<string, string>;
 }
@@ -400,6 +404,8 @@ export interface LetterpadDoc {
   referenceNumber?: string;
   /** GST split captured at save time when the workspace has GST enabled */
   gst?: GstSplit;
+  /** §16 reverse charge (RCM): recipient accounts for the tax */
+  reverseCharge?: boolean;
   /** Pending Razorpay order id waiting for payment confirmation */
   razorpayOrderId?: string;
   /** Set when the business asks the client to sign this document */

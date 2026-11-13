@@ -156,6 +156,7 @@ export async function updateDocument(
             unitPrice: item.unitPrice,
             taxRate: item.taxRate,
             amount: Math.round(item.quantity * item.unitPrice * 100) / 100,
+            ...(item.hsn ? { hsn: item.hsn } : {}),
             ...(values && Object.keys(values).length > 0 ? { values } : {}),
           };
         })
@@ -182,6 +183,12 @@ export async function updateDocument(
       contactState: contact?.state,
       contactCountry: contact?.country,
     });
+
+    // §16: RCM only exists while GST is enabled for this brand.
+    const reverseCharge = brand.gstEnabled === true && data.reverseCharge === true;
+    const unset: Record<string, ""> = {};
+    if (!gst) unset.gst = "";
+    if (!reverseCharge) unset.reverseCharge = "";
 
     await collections.documents().updateOne(
       { _id: objectId, workspaceId: workspace._id },
@@ -211,9 +218,10 @@ export async function updateDocument(
           taxTotal,
           total,
           ...(gst ? { gst } : {}),
+          ...(reverseCharge ? { reverseCharge: true } : {}),
           updatedAt: new Date(),
         },
-        ...(gst ? {} : { $unset: { gst: "" } }),
+        ...(Object.keys(unset).length > 0 ? { $unset: unset } : {}),
       },
     );
 

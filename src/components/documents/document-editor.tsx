@@ -104,11 +104,12 @@ export function DocumentEditor({
   const [body, setBody] = useState(doc.content.body ?? "");
   const [terms, setTerms] = useState(doc.content.terms ?? "");
   const [items, setItems] = useState<ItemDraft[]>(
-    doc.items.map(({ description, quantity, unitPrice, taxRate, values }) => ({
+    doc.items.map(({ description, quantity, unitPrice, taxRate, hsn, values }) => ({
       description,
       quantity,
       unitPrice,
       taxRate,
+      ...(hsn ? { hsn } : {}),
       values: values ? { ...values } : undefined,
     })),
   );
@@ -134,7 +135,9 @@ export function DocumentEditor({
     qty: doc.layout.columns?.qty ?? true,
     unitPrice: doc.layout.columns?.unitPrice ?? true,
     tax: doc.layout.columns?.tax ?? true,
+    hsn: doc.layout.columns?.hsn ?? false,
   });
+  const [reverseCharge, setReverseCharge] = useState(doc.reverseCharge ?? false);
   const [accentColor, setAccentColor] = useState(
     doc.layout.accentColor ?? workspace.brandColor,
   );
@@ -180,6 +183,7 @@ export function DocumentEditor({
       taxTotal: totals.taxTotal,
       total: totals.total,
       discount: discountPayload,
+      reverseCharge: workspace.gstEnabled ? reverseCharge : false,
       content: { subject, body, terms },
       layout: {
         ...activeTemplate?.layout,
@@ -214,6 +218,7 @@ export function DocumentEditor({
         accentColor,
         customColumns,
         discount: discountPayload,
+        reverseCharge,
       };
       const res = await updateDocument(doc.id, payload);
       if (!res.ok) {
@@ -649,6 +654,7 @@ export function DocumentEditor({
                       ["qty", "Qty"],
                       ["unitPrice", "Unit price"],
                       ["tax", "Tax"],
+                      ["hsn", "HSN/SAC"],
                     ] as const
                   ).map(([key, label]) => (
                     <label
@@ -705,6 +711,18 @@ export function DocumentEditor({
                   Applied to subtotal before tax
                 </div>
               </div>
+
+              {workspace.gstEnabled ? (
+                <label className="mt-3 flex w-fit cursor-pointer select-none items-center gap-2 text-sm text-ink-soft">
+                  <input
+                    type="checkbox"
+                    checked={reverseCharge}
+                    onChange={(e) => setReverseCharge(e.target.checked)}
+                    className="size-4 accent-royal"
+                  />
+                  Reverse charge (RCM) — tax payable by recipient
+                </label>
+              ) : null}
             </section>
           ) : (
             <section className="space-y-4">

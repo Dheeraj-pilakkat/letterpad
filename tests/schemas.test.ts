@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   contactSchema,
   documentSchema,
+  profileSchema,
   workspaceSchema,
 } from "@/lib/validation/schemas";
 import { VALID_TRANSITIONS } from "@/lib/constants";
@@ -281,5 +282,104 @@ describe("contactSchema taxId", () => {
     expect(
       contactSchema.safeParse({ name: "Ada", taxId: "29ABCDE1234F1Z5" }).success,
     ).toBe(true);
+  });
+});
+
+describe("§16 India compliance", () => {
+  const base = { name: "Acme Studio", currency: "USD", taxRate: 18, brandColor: "#B4552D" };
+
+  it("accepts a well-formed GSTIN when GST is enabled", () => {
+    expect(
+      workspaceSchema.safeParse({
+        ...base,
+        gstEnabled: true,
+        taxId: "27ABCDE1234F1Z5",
+      }).success,
+    ).toBe(true);
+    expect(
+      workspaceSchema.safeParse({
+        ...base,
+        gstEnabled: true,
+        taxId: "27abcde1234f1z5",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a malformed GSTIN when GST is enabled", () => {
+    for (const bad of ["123456789012345", "27ABC", "GB123456789", "27ABCDE1234F1ZZZ"]) {
+      expect(
+        workspaceSchema.safeParse({
+          ...base,
+          gstEnabled: true,
+          taxId: bad,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("allows any taxId (or none) while GST is disabled", () => {
+    expect(
+      workspaceSchema.safeParse({ ...base, gstEnabled: false, taxId: "not-a-gstin" })
+        .success,
+    ).toBe(true);
+    expect(workspaceSchema.safeParse({ ...base, gstEnabled: true }).success).toBe(true);
+  });
+
+  it("validates GSTIN on profileSchema the same way", () => {
+    expect(
+      profileSchema.safeParse({ ...base, gstEnabled: true, taxId: "27ABCDE1234F1Z5" })
+        .success,
+    ).toBe(true);
+    expect(
+      profileSchema.safeParse({ ...base, gstEnabled: true, taxId: "nope" }).success,
+    ).toBe(false);
+    expect(
+      profileSchema.safeParse({ ...base, gstEnabled: false, taxId: "nope" }).success,
+    ).toBe(true);
+  });
+
+  it("accepts HSN/SAC on line items and rejects overlong codes", () => {
+    const item = {
+      description: "Design work",
+      quantity: 1,
+      unitPrice: 100,
+      taxRate: 18,
+      hsn: "998314",
+    };
+    const ok = documentSchema.safeParse({
+      templateId: "invoice-classic",
+      contactId: "",
+      issueDate: "2026-10-19",
+      currency: "INR",
+      content: {},
+      items: [item],
+      columns: { hsn: true },
+      reverseCharge: true,
+    });
+    expect(ok.success).toBe(true);
+    expect(ok.success && ok.data.items[0].hsn).toBe("998314");
+    expect(ok.success && ok.data.reverseCharge).toBe(true);
+
+    const tooLong = documentSchema.safeParse({
+      templateId: "invoice-classic",
+      contactId: "",
+      issueDate: "2026-10-19",
+      currency: "INR",
+      content: {},
+      items: [{ ...item, hsn: "x".repeat(21) }],
+    });
+    expect(tooLong.success).toBe(false);
+  });
+
+  it("treats reverseCharge as an optional boolean", () => {
+    const bad = documentSchema.safeParse({
+      templateId: "invoice-classic",
+      contactId: "",
+      issueDate: "2026-10-19",
+      currency: "INR",
+      content: {},
+      reverseCharge: "yes",
+    });
+    expect(bad.success).toBe(false);
   });
 });

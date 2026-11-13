@@ -10,8 +10,8 @@ import {
 } from "@/lib/templates/registry";
 
 describe("template registry", () => {
-  it("has 18 templates with unique ids", () => {
-    expect(TEMPLATES).toHaveLength(18);
+  it("has 19 templates with unique ids", () => {
+    expect(TEMPLATES).toHaveLength(19);
     const ids = TEMPLATES.map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
@@ -64,6 +64,15 @@ describe("template registry", () => {
     expect(documentLabel("request", "request-payment")).toBe("Payment Request");
     expect(documentLabel("request", "request-letter")).toBe("Request Letter");
     expect(documentLabel("quote", "quote-classic")).toBe("Quotation");
+  });
+
+  it("proforma is a free invoice template with its own title", () => {
+    const t = templateById("invoice-proforma");
+    expect(t?.type).toBe("invoice");
+    expect(t?.kind).toBe("itemized");
+    expect(t?.premium).toBeFalsy();
+    expect(documentLabel("invoice", "invoice-proforma")).toBe("Proforma Invoice");
+    expect(documentLabel("invoice", "invoice-classic")).toBe("Bill");
   });
 });
 

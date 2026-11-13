@@ -14,6 +14,8 @@ export interface ItemDraft {
   quantity: number;
   unitPrice: number;
   taxRate: number;
+  /** §16 HSN/SAC code for this line (GST invoices) */
+  hsn?: string;
   /** Custom column values keyed by CustomColumn.id */
   values?: Record<string, string>;
 }
@@ -29,6 +31,7 @@ export function resolveColumns(columns?: LineItemColumns): Required<LineItemColu
     qty: columns?.qty ?? true,
     unitPrice: columns?.unitPrice ?? true,
     tax: columns?.tax ?? true,
+    hsn: columns?.hsn ?? false,
   };
 }
 
@@ -270,6 +273,7 @@ export function LineItems({
     Number(cols.qty) +
     Number(cols.unitPrice) +
     Number(cols.tax) +
+    Number(cols.hsn) +
     customColumns.length;
 
   return (
@@ -280,6 +284,9 @@ export function LineItems({
             <tr className="border-b border-line text-left text-xs text-muted">
               <th className="w-8 pb-2 font-medium">#</th>
               <th className="pb-2 pr-2 font-medium">Description</th>
+              {cols.hsn ? (
+                <th className="w-24 pb-2 pr-2 font-medium">HSN/SAC</th>
+              ) : null}
               {customColumns.map((col) => (
                 <th
                   key={col.id}
@@ -353,6 +360,17 @@ export function LineItems({
                         aria-label={`Line ${i + 1} description`}
                       />
                     </td>
+                    {cols.hsn ? (
+                      <td className="py-1.5 pr-2">
+                        <Input
+                          value={item.hsn ?? ""}
+                          onChange={(e) => update(i, { hsn: e.target.value })}
+                          placeholder="998314"
+                          className="h-9"
+                          aria-label={`Line ${i + 1} HSN/SAC code`}
+                        />
+                      </td>
+                    ) : null}
                     {customColumns.map((col) => (
                       <td key={col.id} className="py-1.5 pr-2">
                         {col.type === "number" ? (

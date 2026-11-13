@@ -14,7 +14,30 @@ const imageSchema = z
     message: "Image must be smaller than 700KB",
   });
 
-export const workspaceSchema = z.object({
+/**
+ * GSTIN format (§16): 2-digit state code + 5-letter PAN entity + 4 digits +
+ * entity letter + "Z" + checksum — e.g. 27ABCDE1234F1Z5. Case-insensitive
+ * so "27abcdef..." still validates; stored as typed.
+ */
+export const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/i;
+const GSTIN_MESSAGE =
+  "Enter a valid GSTIN (15 characters, e.g. 27ABCDE1234F1Z5)";
+
+/** §16 GSTIN validation — applies when GST is enabled and a tax ID is given. */
+function gstinRefine(
+  data: { gstEnabled?: boolean; taxId?: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (data.gstEnabled && data.taxId && !GSTIN_RE.test(data.taxId)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["taxId"],
+      message: GSTIN_MESSAGE,
+    });
+  }
+}
+
+const workspaceBase = z.object({
   name: z.string().trim().min(2, "Business name is required").max(120),
   logo: imageSchema.optional().or(z.literal("")),
   signature: imageSchema.optional().or(z.literal("")),
@@ -82,13 +105,16 @@ export const workspaceSchema = z.object({
     .optional(),
 });
 
+/** §16: GST-enabled businesses must enter a valid GSTIN when they give one. */
+export const workspaceSchema = workspaceBase.superRefine(gstinRefine);
+
 export type WorkspaceInput = z.infer<typeof workspaceSchema>;
 
 /**
  * Business profile (§6): a second identity inside a workspace. Branding
  * subset of `workspaceSchema` — no payment keys or workspace-only settings.
  */
-export const profileSchema = workspaceSchema.pick({
+export const profileSchema = workspaceBase.pick({
   name: true,
   logo: true,
   signature: true,
@@ -117,7 +143,7 @@ export const profileSchema = workspaceSchema.pick({
   numberPrefixes: true,
   numberPad: true,
   numberStarts: true,
-});
+}).superRefine(gstinRefine);
 
 export type ProfileInput = z.infer<typeof profileSchema>;
 
@@ -143,6 +169,8 @@ export const documentItemSchema = z.object({
   quantity: z.coerce.number().positive().max(1_000_000),
   unitPrice: z.coerce.number().min(0).max(1_000_000_000),
   taxRate: z.coerce.number().min(0).max(100),
+  /** §16 HSN/SAC code shown on GST invoices */
+  hsn: z.string().trim().max(20).optional(),
   /** Custom column values keyed by CustomColumn.id */
   values: z.record(z.string().max(40), z.string().max(300)).optional(),
 });
@@ -169,6 +197,7 @@ export const documentSchema = z.object({
       qty: z.boolean().optional(),
       unitPrice: z.boolean().optional(),
       tax: z.boolean().optional(),
+      hsn: z.boolean().optional(),
     })
     .optional(),
   accentColor: z
@@ -191,6 +220,8 @@ export const documentSchema = z.object({
       value: z.coerce.number().min(0).max(1_000_000_000),
     })
     .optional(),
+  /** §16 reverse charge (RCM): tax paid by the recipient, not the issuer */
+  reverseCharge: z.boolean().optional(),
 });
 
 export type DocumentInput = z.infer<typeof documentSchema>;

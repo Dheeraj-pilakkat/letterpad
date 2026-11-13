@@ -41,6 +41,8 @@ export interface PdfWorkspace {
   brandColor: string;
   /** Workspace tax label (GST / VAT / Sales Tax …) for the totals row */
   taxLabel?: string;
+  /** §16 GST opted in — drives the reverse-charge toggle in the editor */
+  gstEnabled?: boolean;
 }
 
 export interface PdfDoc {
@@ -60,6 +62,8 @@ export interface PdfDoc {
   discount?: { type: "percent" | "amount"; value: number };
   /** GST split (CGST/SGST or IGST) captured when the workspace has GST on */
   gst?: { placeOfSupply: string; cgst: number; sgst: number; igst: number };
+  /** §16 reverse charge (RCM): recipient accounts for the tax */
+  reverseCharge?: boolean;
   content: DocumentContent;
   layout: TemplateLayout;
   /** Set when the business has asked the client to sign */
@@ -281,6 +285,7 @@ export function DocumentPdf({ workspace, doc, contact }: DocumentPdfProps) {
     qty: doc.layout.columns?.qty !== false,
     unitPrice: doc.layout.columns?.unitPrice !== false,
     tax: doc.layout.columns?.tax !== false,
+    hsn: doc.layout.columns?.hsn === true,
   };
   const customCols = doc.layout.customColumns ?? [];
 
@@ -289,6 +294,9 @@ export function DocumentPdf({ workspace, doc, contact }: DocumentPdfProps) {
       <View style={st({ marginTop: 14 })}>
         <View style={[s.thRow, st({ backgroundColor: accent })]}>
           <Text style={[s.th, st({ flexGrow: 1, paddingRight: 6 })]}>DESCRIPTION</Text>
+          {cols.hsn ? (
+            <Text style={[s.th, st({ width: 56, paddingRight: 6 })]}>HSN/SAC</Text>
+          ) : null}
           {customCols.map((col) => (
             <Text
               key={col.id}
@@ -326,6 +334,11 @@ export function DocumentPdf({ workspace, doc, contact }: DocumentPdfProps) {
             <Text style={[s.td, st({ flexGrow: 1, paddingRight: 6 })]} wrap>
               {item.description}
             </Text>
+            {cols.hsn ? (
+              <Text style={[s.td, st({ width: 56, paddingRight: 6 })]} wrap>
+                {item.hsn || "—"}
+              </Text>
+            ) : null}
             {customCols.map((col) => {
               const value = item.values?.[col.id] ?? "";
               return col.type === "number" ? (
@@ -393,6 +406,14 @@ export function DocumentPdf({ workspace, doc, contact }: DocumentPdfProps) {
               <View style={s.totalRow}>
                 <Text style={st({ color: "#5C6470", fontSize: 8 })}>
                   Place of supply: {doc.gst.placeOfSupply}
+                </Text>
+                <Text />
+              </View>
+            ) : null}
+            {doc.reverseCharge ? (
+              <View style={s.totalRow}>
+                <Text style={st({ color: "#5C6470", fontSize: 8 })}>
+                  Reverse charge: Yes — tax payable by recipient
                 </Text>
                 <Text />
               </View>
