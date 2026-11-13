@@ -34,3 +34,18 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Operations (§22 security & reliability)
+
+- **Backups** — Atlas → Snapshots: schedule daily backups with point-in-time
+  recovery for the `letterpad` database; restore into a fresh cluster for
+  disaster recovery.
+- **Error monitoring** — add a Sentry (or similar) DSN to `SENTRY_DSN` when
+  deploying; unhandled route errors already return JSON 500s.
+- **Admin panel** — set `ADMIN_EMAILS` (comma-separated) to grant `/admin`
+  access (dashboard, users, workspaces, subscriptions).
+- **Cron** — scheduled document delivery runs on `GET /api/cron/schedules`
+  with header `x-cron-secret: $CRON_SECRET`; without the secret it 503s.
+- **Data lifecycle** — users can export their workspace as JSON
+  (`Settings → Data export`) and permanently delete their account
+  (`Settings → Danger zone`), both enforced server-side.

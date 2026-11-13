@@ -10,7 +10,12 @@ import { sendEmail } from "@/lib/share";
 export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
-  database: mongodbAdapter(getDb(), { client: getMongoClient() }),
+  database: mongodbAdapter(getDb(), {
+    client: getMongoClient(),
+    // Standalone Mongo (local/Docker) rejects transaction numbers; Atlas
+    // replica sets work fine without them too.
+    transaction: false,
+  }),
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,

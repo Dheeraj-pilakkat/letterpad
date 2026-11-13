@@ -4,6 +4,7 @@ import { requireWorkspace } from "@/lib/auth/session";
 import { SignOutButton } from "@/components/app/sign-out-button";
 import { ProfileForm, ChangePasswordForm } from "@/components/settings/settings-forms";
 import { RazorpayCard } from "@/components/settings/razorpay-card";
+import { DangerZone } from "@/components/settings/danger-zone";
 import { Card } from "@/components/ui/card";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -134,8 +135,30 @@ export default async function SettingsPage() {
                 </Link>
               </div>
             </Card>
+
+            <Card>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-medium text-ink">Data export</h2>
+                  <p className="mt-1 text-xs text-muted">
+                    Download every document, client and payment as JSON
+                  </p>
+                </div>
+                <a
+                  href="/api/export"
+                  className="inline-flex h-9 items-center rounded-[3px] border border-line bg-white px-4 text-sm text-ink hover:border-ink/40"
+                >
+                  Download JSON ↓
+                </a>
+              </div>
+            </Card>
           </>
         ) : null}
+
+        <Card>
+          <h2 className="mb-3 text-sm font-medium text-red">Danger zone</h2>
+          <DangerZone email={user.email} />
+        </Card>
       </div>
     </div>
   );
