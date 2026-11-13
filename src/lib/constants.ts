@@ -1,4 +1,4 @@
-import type { DocumentStatus } from "@/lib/db/types";
+import type { DocumentStatus, NotificationType } from "@/lib/db/types";
 
 export const CURRENCIES = [
   "USD",
@@ -62,4 +62,17 @@ export const ACTIVITY_LABELS: Record<string, string> = {
   payment: "Payment",
   signed: "Signed",
   reminder: "Reminder",
+};
+
+/** §11.3 in-app notification display labels (client-safe). */
+export const NOTIFICATION_LABELS: Record<NotificationType, string> = {
+  payment_received: "Payment received",
+  invoice_overdue: "Invoice overdue",
+  quote_accepted: "Quotation accepted",
+  quote_rejected: "Quotation rejected",
+  document_viewed: "Document viewed",
+  signature_completed: "Signature completed",
+  payment_request_paid: "Payment request paid",
+  document_expiring: "Document expiring",
+  team_invite: "Team invitation received",
 };

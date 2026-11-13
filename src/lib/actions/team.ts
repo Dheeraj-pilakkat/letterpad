@@ -10,9 +10,10 @@ import {
   toObjectId,
   WORKSPACE_COOKIE,
 } from "@/lib/auth/session";
-import { collections } from "@/lib/db/client";
+import { collections, getDb } from "@/lib/db/client";
 import { sendEmail } from "@/lib/share";
 import { checkSeatLimit } from "@/lib/plans";
+import { notifyWorkspace } from "@/lib/notify";
 import {
   canAcceptInvite,
   canManage,
@@ -90,6 +91,25 @@ export async function inviteMemberAction(
       expiresAt: new Date(now.getTime() + INVITE_TTL_MS).toISOString(),
       createdAt: now,
     });
+
+    // §11.3 — notify the invitee in-app when they already have an account.
+    try {
+      const invitee = await getDb()
+        .collection<{ _id: ObjectId }>("user")
+        .findOne({ email: cleanEmail });
+      if (invitee) {
+        await notifyWorkspace({
+          workspaceId: workspace._id,
+          type: "team_invite",
+          title: `${user.name} invited you to ${workspace.name}`,
+          body: `Role: ${role} — open the invitation to accept`,
+          href: invitePath(token),
+          userIds: [invitee._id.toHexString()],
+        });
+      }
+    } catch {
+      /* best-effort */
+    }
 
     // Best-effort email — only actually delivered when Resend is configured.
     const origin = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");

@@ -1,17 +1,45 @@
 import { collections } from "@/lib/db/client";
 import { toObjectId } from "@/lib/auth/session";
+import { isExpired, portalExpiry, PORTAL_RENEW_WINDOW_DAYS } from "@/lib/share";
 import type { Contact, LetterpadDoc, Workspace } from "@/lib/db/types";
 
 export const PORTAL_TOKEN_RE = /^[a-z0-9]{16,64}$/;
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Resolve a portal token to its contact, enforcing expiry (§22 expiring
+ * URLs). Active portals slide their expiry forward when fewer than
+ * PORTAL_RENEW_WINDOW_DAYS remain, so engaged clients keep access while
+ * dormant links eventually stop resolving.
+ */
+export async function findPortalContact(
+  token: string,
+): Promise<Contact | null> {
+  if (!PORTAL_TOKEN_RE.test(token)) return null;
+  const contact = await collections
+    .contacts()
+    .findOne({ portalToken: token, portalEnabled: true });
+  if (!contact) return null;
+  if (isExpired(contact.portalExpiresAt)) return null;
+
+  const now = new Date();
+  const at = new Date(contact.portalExpiresAt as Date);
+  if (at.getTime() - now.getTime() < PORTAL_RENEW_WINDOW_DAYS * DAY_MS) {
+    const renewed = portalExpiry(now);
+    await collections
+      .contacts()
+      .updateOne({ _id: contact._id }, { $set: { portalExpiresAt: renewed } });
+    contact.portalExpiresAt = renewed;
+  }
+  return contact;
+}
 
 /** Resolve a portal token to its contact + workspace. */
 export async function resolvePortal(
   token: string,
 ): Promise<{ contact: Contact; workspace: Workspace } | null> {
-  if (!PORTAL_TOKEN_RE.test(token)) return null;
-  const contact = await collections
-    .contacts()
-    .findOne({ portalToken: token, portalEnabled: true });
+  const contact = await findPortalContact(token);
   if (!contact) return null;
   const workspace = await collections
     .workspaces()

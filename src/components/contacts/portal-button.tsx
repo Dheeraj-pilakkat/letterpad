@@ -13,10 +13,12 @@ export function PortalButton({
   contactId,
   enabled,
   token,
+  expiresAt,
 }: {
   contactId: string;
   enabled: boolean;
   token?: string;
+  expiresAt?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -41,13 +43,25 @@ export function PortalButton({
   return (
     <div className="flex items-center gap-2">
       {enabled && token ? (
-        <button
-          type="button"
-          onClick={copyLink}
-          className="text-xs text-royal hover:underline"
-        >
-          Copy portal link
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={copyLink}
+            className="text-xs text-royal hover:underline"
+          >
+            Copy portal link
+          </button>
+          {expiresAt ? (
+            <span className="text-xs text-muted">
+              Expires{" "}
+              {new Date(expiresAt).toLocaleDateString("en-GB", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })}
+            </span>
+          ) : null}
+        </>
       ) : null}
       <Button
         type="button"

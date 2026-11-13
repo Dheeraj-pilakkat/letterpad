@@ -7,6 +7,7 @@ import { logActivity } from "@/lib/activity";
 import { formatMoney } from "@/lib/utils";
 import { sendEmail } from "@/lib/share";
 import { paymentConfirmationEmail } from "@/lib/signature";
+import { notifyWorkspace } from "@/lib/notify";
 
 export type PaymentResult = { ok: boolean; error?: string; id?: string };
 
@@ -84,6 +85,20 @@ export async function recordPaymentForDocument(opts: {
     type: "payment",
     message: `Payment recorded: ${formatMoney(data.amount, target.currency)} via ${data.method}`,
     actor: userId,
+  });
+
+  // §11.3 in-app notification — every payment, or "request paid" when the
+  // request document settles in full.
+  const settled = balanceOf(target.total, after) <= 0;
+  const isRequestPaid = target.type === "request" && settled;
+  await notifyWorkspace({
+    workspaceId: workspace._id,
+    type: isRequestPaid ? "payment_request_paid" : "payment_received",
+    title: isRequestPaid
+      ? `Payment request ${target.number} paid`
+      : `Payment of ${formatMoney(data.amount, target.currency)} received`,
+    body: `${target.number} via ${data.method}`,
+    href: `/app/documents/${documentId}`,
   });
 
   // Best-effort payment confirmation to the client (only when Resend is live)

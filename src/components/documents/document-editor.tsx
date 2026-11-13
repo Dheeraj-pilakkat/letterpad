@@ -49,6 +49,8 @@ export interface EditorDoc extends PdfDoc {
   id: string;
   contactId: string | null;
   shareEnabled?: boolean;
+  /** ISO expiry of the current share link, if any */
+  shareExpiresAt?: string | null;
 }
 
 export interface ContactOption extends PdfContact {
@@ -118,6 +120,9 @@ export function DocumentEditor({
   );
   const [shareEnabled, setShareEnabled] = useState(doc.shareEnabled ?? false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareExpiresAt, setShareExpiresAt] = useState<string | null>(
+    doc.shareExpiresAt ?? null,
+  );
   const [emailTo, setEmailTo] = useState(
     contacts.find((c) => c.id === (doc.contactId ?? ""))?.email ?? "",
   );
@@ -258,6 +263,7 @@ export function DocumentEditor({
         }
         setShareEnabled(false);
         setShareUrl(null);
+        setShareExpiresAt(null);
       } else {
         const res = await enableShare(doc.id);
         if (!res.ok || !res.url) {
@@ -266,6 +272,7 @@ export function DocumentEditor({
         }
         setShareEnabled(true);
         setShareUrl(res.url);
+        setShareExpiresAt(res.expiresAt ?? null);
         await navigator.clipboard?.writeText(res.url).catch(() => undefined);
         setFlash("Share link copied");
         setTimeout(() => setFlash(null), 2500);
@@ -292,6 +299,7 @@ export function DocumentEditor({
       if (res.url) {
         setShareEnabled(true);
         setShareUrl(res.url);
+        if (res.expiresAt) setShareExpiresAt(res.expiresAt);
       }
       if (res.mode === "mailto" && res.mailto) {
         window.location.href = res.mailto;
@@ -479,6 +487,16 @@ export function DocumentEditor({
             <Button variant="ghost" size="sm" onClick={copyShare}>
               Copy
             </Button>
+          ) : null}
+          {shareExpiresAt ? (
+            <span className="ml-auto shrink-0 text-xs text-muted">
+              Expires{" "}
+              {new Date(shareExpiresAt).toLocaleDateString("en-GB", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })}
+            </span>
           ) : null}
         </div>
       ) : null}

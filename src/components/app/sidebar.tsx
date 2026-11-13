@@ -22,6 +22,10 @@ import {
 } from "lucide-react";
 import { authClient } from "@/components/auth/auth-provider";
 import { WorkspaceSwitcher, type WorkspaceOption } from "@/components/app/workspace-switcher";
+import {
+  NotificationBell,
+  type BellNotification,
+} from "@/components/app/notification-bell";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -43,6 +47,8 @@ export function Sidebar({
   userEmail,
   workspaces,
   currentWorkspaceId,
+  notifications = [],
+  unreadCount = 0,
   isAdmin = false,
 }: {
   workspaceName: string;
@@ -50,6 +56,8 @@ export function Sidebar({
   userEmail: string;
   workspaces: WorkspaceOption[];
   currentWorkspaceId: string;
+  notifications?: BellNotification[];
+  unreadCount?: number;
   isAdmin?: boolean;
 }) {
   const pathname = usePathname();
@@ -133,6 +141,7 @@ export function Sidebar({
             {workspaceName}
           </span>
         </div>
+        <NotificationBell items={notifications} unread={unreadCount} />
         <Link
           href="/app/documents/new"
           aria-label="New document"
@@ -214,9 +223,12 @@ export function Sidebar({
       {/* ---------- desktop sidebar ---------- */}
       <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-white md:flex">
         <div className="border-b border-line px-5 py-5">
-          <Link href="/app" className="font-display text-xl text-ink">
-            Letter<span className="text-royal">pad</span>
-          </Link>
+          <div className="flex items-center justify-between gap-2">
+            <Link href="/app" className="font-display text-xl text-ink">
+              Letter<span className="text-royal">pad</span>
+            </Link>
+            <NotificationBell items={notifications} unread={unreadCount} />
+          </div>
           <div className="mt-2">
             <WorkspaceSwitcher workspaces={workspaces} currentId={currentWorkspaceId} />
           </div>

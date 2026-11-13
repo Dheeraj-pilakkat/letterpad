@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireWorkspace, toObjectId } from "@/lib/auth/session";
 import { collections } from "@/lib/db/client";
 import { logActivity } from "@/lib/activity";
-import { generateShareToken, sendEmail, shareUrl, mailtoHref } from "@/lib/share";
+import { generateShareToken, sendEmail, shareUrl, mailtoHref, isExpired, shareExpiry } from "@/lib/share";
 import { documentLinkFor } from "@/lib/document-link";
 import { sendReminderCore } from "@/lib/reminders";
 import { reviewRequestEmail } from "@/lib/signature";
@@ -12,12 +12,15 @@ import { documentLabel } from "@/lib/templates/registry";
 import { balanceOf } from "@/lib/finance";
 import { isValidPhone, normalizePhone, whatsappMessage, whatsappShareUrl } from "@/lib/whatsapp";
 import type { ActionResult } from "@/lib/actions/documents";
+import type { Contact, LetterpadDoc, Workspace } from "@/lib/db/types";
 
 export type ShareActionResult = ActionResult & {
   url?: string;
   /** "resend" | "mailto" | undefined */
   mode?: string;
   mailto?: string;
+  /** ISO expiry of the share link (§22 expiring URLs) */
+  expiresAt?: string;
 };
 
 /** Enable (or re-enable with a fresh token) public sharing for a document. */
@@ -33,9 +36,17 @@ export async function enableShare(id: string): Promise<ShareActionResult> {
     if (!doc) return { ok: false, error: "Document not found" };
 
     const token = generateShareToken();
+    const expiresAt = shareExpiry();
     await collections.documents().updateOne(
       { _id: objectId, workspaceId: workspace._id },
-      { $set: { shareEnabled: true, shareToken: token, updatedAt: new Date() } },
+      {
+        $set: {
+          shareEnabled: true,
+          shareToken: token,
+          shareExpiresAt: expiresAt,
+          updatedAt: new Date(),
+        },
+      },
     );
     await logActivity({
       workspaceId: workspace._id,
@@ -45,7 +56,7 @@ export async function enableShare(id: string): Promise<ShareActionResult> {
       actor: user.id,
     });
     revalidatePath(`/app/documents/${id}`);
-    return { ok: true, url: shareUrl(token) };
+    return { ok: true, url: shareUrl(token), expiresAt: expiresAt.toISOString() };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to enable sharing" };
   }
@@ -67,10 +78,9 @@ export async function disableShare(id: string): Promise<ActionResult> {
       {
         $set: {
           shareEnabled: false,
-          shareToken: undefined,
           updatedAt: new Date(),
         },
-        $unset: { shareToken: "" },
+        $unset: { shareToken: "", shareExpiresAt: "", shareExpiryNotifiedAt: "" },
       },
     );
     await logActivity({
@@ -116,15 +126,28 @@ export async function emailDocument(
     if (!doc) return { ok: false, error: "Document not found" };
 
     let url = "";
-    if (doc.shareEnabled && doc.shareToken) {
+    let expiresAt = "";
+    if (doc.shareEnabled && doc.shareToken && !isExpired(doc.shareExpiresAt)) {
       url = shareUrl(doc.shareToken);
+      expiresAt = doc.shareExpiresAt
+        ? new Date(doc.shareExpiresAt).toISOString()
+        : "";
     } else {
       const token = generateShareToken();
+      const expiry = shareExpiry();
       await collections.documents().updateOne(
         { _id: objectId, workspaceId: workspace._id },
-        { $set: { shareEnabled: true, shareToken: token, updatedAt: new Date() } },
+        {
+          $set: {
+            shareEnabled: true,
+            shareToken: token,
+            shareExpiresAt: expiry,
+            updatedAt: new Date(),
+          },
+        },
       );
       url = shareUrl(token);
+      expiresAt = expiry.toISOString();
     }
 
     const subject =
@@ -151,6 +174,7 @@ export async function emailDocument(
       return {
         ok: true,
         url,
+        expiresAt: expiresAt || undefined,
         mode: result.mode,
         mailto: mailtoHref({ to, subject, text }),
       };
@@ -169,6 +193,7 @@ export async function recordShareView(token: string): Promise<void> {
       .documents()
       .findOne({ shareToken: token, shareEnabled: true });
     if (!doc || doc.deletedAt) return;
+    if (isExpired(doc.shareExpiresAt)) return;
     await collections.documents().updateOne(
       { _id: doc._id },
       { $set: { updatedAt: new Date() } },
@@ -182,12 +207,22 @@ export async function recordShareView(token: string): Promise<void> {
     });
     // Only bump to "viewed" from sent — never clobber paid/accepted/etc.
     if (doc.status === "sent") {
-      await collections
+      const res = await collections
         .documents()
         .updateOne(
           { _id: doc._id, status: "sent" },
           { $set: { status: "viewed", updatedAt: new Date() } },
         );
+      if (res.modifiedCount > 0) {
+        const { notifyWorkspace } = await import("@/lib/notify");
+        await notifyWorkspace({
+          workspaceId: doc.workspaceId,
+          type: "document_viewed",
+          title: "Document viewed",
+          body: `${doc.number} was viewed via share link`,
+          href: `/app/documents/${doc._id.toHexString()}`,
+        });
+      }
     }
     revalidatePath(`/share/${token}`);
   } catch {
@@ -195,12 +230,26 @@ export async function recordShareView(token: string): Promise<void> {
   }
 }
 
-export async function getSharedDocument(token: string) {
+export type SharedDocumentResult =
+  | {
+      status: "active";
+      doc: LetterpadDoc;
+      workspace: Workspace;
+      contact: Contact | null;
+    }
+  | { status: "expired" };
+
+export async function getSharedDocument(
+  token: string,
+): Promise<SharedDocumentResult | null> {
   if (!token || !/^[a-z0-9]{16,64}$/.test(token)) return null;
   const doc = await collections
     .documents()
     .findOne({ shareToken: token, shareEnabled: true, deletedAt: null });
   if (!doc) return null;
+  // §22 expiring URLs: an expired link resolves to a distinct "expired" state
+  // so the page can explain it without leaking document details.
+  if (isExpired(doc.shareExpiresAt)) return { status: "expired" };
   const workspace = await collections
     .workspaces()
     .findOne({ _id: doc.workspaceId });
@@ -210,7 +259,7 @@ export async function getSharedDocument(token: string) {
         .contacts()
         .findOne({ _id: doc.contactId, workspaceId: workspace._id })
     : null;
-  return { doc, workspace, contact };
+  return { status: "active", doc, workspace, contact };
 }
 
 /* ============================================================

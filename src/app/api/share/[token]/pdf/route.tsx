@@ -14,6 +14,12 @@ export async function GET(
   if (!shared) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  if (shared.status === "expired") {
+    return NextResponse.json(
+      { error: "This share link has expired" },
+      { status: 410 },
+    );
+  }
 
   await recordShareView(token);
   const { doc, workspace, contact } = shared;

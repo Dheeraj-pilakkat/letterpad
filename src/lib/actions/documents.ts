@@ -297,7 +297,7 @@ export async function duplicateDocument(id: string): Promise<ActionResult> {
     );
     const now = new Date();
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { _id: _oldId, shareToken: _st, shareEnabled: _se, ...rest } = existing;
+    const { _id: _oldId, shareToken: _st, shareEnabled: _se, shareExpiresAt: _sxa, shareExpiryNotifiedAt: _sna, ...rest } = existing;
     const result = await collections.documents().insertOne({
       _id: new ObjectId(),
       ...rest,
@@ -345,7 +345,7 @@ export async function deleteDocument(id: string): Promise<ActionResult> {
             shareEnabled: false,
             updatedAt: new Date(),
           },
-          $unset: { shareToken: "" },
+          $unset: { shareToken: "", shareExpiresAt: "", shareExpiryNotifiedAt: "" },
         },
       );
     await logActivity({

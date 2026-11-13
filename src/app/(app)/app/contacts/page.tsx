@@ -4,6 +4,7 @@ import { collections } from "@/lib/db/client";
 import { ContactDialog } from "@/components/contacts/contact-dialog";
 import { RestoreContactButton } from "@/components/contacts/restore-button";
 import { PortalButton } from "@/components/contacts/portal-button";
+import { isExpired } from "@/lib/share";
 import { EmptyState } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -160,8 +161,11 @@ export default async function ContactsPage({
                 {!showArchived ? (
                   <PortalButton
                     contactId={c._id.toHexString()}
-                    enabled={Boolean(c.portalEnabled)}
+                    enabled={
+                      Boolean(c.portalEnabled) && !isExpired(c.portalExpiresAt)
+                    }
                     token={c.portalToken}
+                    expiresAt={c.portalExpiresAt?.toISOString()}
                   />
                 ) : null}
                 {showArchived ? (

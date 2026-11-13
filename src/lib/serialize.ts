@@ -53,6 +53,9 @@ export function toEditorDoc(doc: LetterpadDoc): EditorDoc {
     content: doc.content,
     layout: doc.layout,
     shareEnabled: doc.shareEnabled ?? false,
+    shareExpiresAt: doc.shareExpiresAt
+      ? new Date(doc.shareExpiresAt).toISOString()
+      : null,
     signatureRequested: doc.signatureRequested ?? false,
     signature: doc.signature
       ? {

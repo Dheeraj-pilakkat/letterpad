@@ -358,3 +358,372 @@ describe.skipIf(!hasDb)("account deletion (DB)", () => {
     expect(res.error).toBe("You are signed out");
   });
 });
+
+describe.skipIf(!hasDb)("share & portal link expiry (DB)", () => {
+  const stamp = Date.now();
+  const email = `e2e-expiry-${stamp}@example.test`;
+  const password = "Sup3rSecret!1";
+  let userId = "";
+  let workspaceId: ObjectId;
+  let docId: ObjectId;
+  let contactId: ObjectId;
+  let shareToken = "";
+
+  beforeAll(async () => {
+    const { auth } = await import("@/lib/auth/config");
+    const { collections, getDb } = await import("@/lib/db/client");
+    await auth.api.signUpEmail({
+      body: { email, password, name: "E2E Expiry" },
+      headers: new Headers(ORIGIN),
+    });
+    state.cookie = await signInCookie(auth, email, password);
+
+    const user = await getDb().collection("user").findOne({ email });
+    userId = (user?._id as ObjectId).toHexString();
+
+    const now = new Date();
+    workspaceId = new ObjectId();
+    await collections.workspaces().insertOne({
+      _id: workspaceId,
+      name: "E2E Expiry WS",
+      slug: `e2e-expiry-${stamp}`,
+      ownerUserId: userId,
+      currency: "USD",
+      taxRate: 0,
+      brandColor: "#B4552D",
+      brandColors: ["#B4552D"],
+      members: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    contactId = new ObjectId();
+    await collections.contacts().insertOne({
+      _id: contactId,
+      workspaceId,
+      name: "E2E Client",
+      email: `client-${stamp}@example.test`,
+      archived: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    docId = new ObjectId();
+    await collections.documents().insertOne({
+      _id: docId,
+      workspaceId,
+      type: "invoice",
+      templateId: "minimal",
+      number: `INV-EXP-${stamp}`,
+      status: "draft",
+      contactId,
+      issueDate: "2026-06-15",
+      currency: "USD",
+      items: [],
+      subtotal: 0,
+      discountTotal: 0,
+      taxTotal: 0,
+      total: 0,
+      content: { subject: "", body: "", terms: "" },
+      layout: { accentColor: "#B4552D" },
+      createdBy: userId,
+      deletedAt: null,
+      shareEnabled: false,
+      createdAt: now,
+      updatedAt: now,
+    } as never);
+  });
+
+  afterAll(async () => {
+    state.cookie = "";
+    if (!hasDb) return;
+    const { collections, getDb } = await import("@/lib/db/client");
+    try {
+      const uid = new ObjectId(userId);
+      await getDb().collection("session").deleteMany({ userId: uid });
+      await getDb().collection("account").deleteMany({ userId: uid });
+      await getDb().collection("user").deleteOne({ _id: uid });
+      await collections.workspaces().deleteOne({ _id: workspaceId });
+      await collections.documents().deleteOne({ _id: docId });
+      await collections.contacts().deleteOne({ _id: contactId });
+      await collections.activity().deleteMany({ workspaceId });
+    } catch {
+      /* best-effort cleanup */
+    }
+  });
+
+  it("enableShare issues a link with a future expiry that resolves active", async () => {
+    const { enableShare, getSharedDocument } = await import(
+      "@/lib/actions/sharing"
+    );
+    const res = await enableShare(docId.toHexString());
+    expect(res.ok).toBe(true);
+    expect(res.url).toContain("/share/");
+    expect(res.expiresAt).toBeTruthy();
+    expect(new Date(res.expiresAt!).getTime()).toBeGreaterThan(Date.now());
+
+    shareToken = res.url!.split("/share/")[1];
+    const shared = await getSharedDocument(shareToken);
+    expect(shared?.status).toBe("active");
+    if (shared?.status === "active") {
+      expect(shared.doc.number).toContain("INV-EXP-");
+      expect(shared.contact?.name).toBe("E2E Client");
+    }
+  });
+
+  it("an expired share link resolves as expired and is refreshed by documentLinkFor", async () => {
+    const { collections } = await import("@/lib/db/client");
+    const { getSharedDocument } = await import("@/lib/actions/sharing");
+    const { documentLinkFor } = await import("@/lib/document-link");
+
+    await collections
+      .documents()
+      .updateOne(
+        { _id: docId },
+        { $set: { shareExpiresAt: new Date(Date.now() - 1000) } },
+      );
+
+    const expired = await getSharedDocument(shareToken);
+    expect(expired).toEqual({ status: "expired" });
+
+    const oldUrl = `http://localhost:3000/share/${shareToken}`;
+    const newUrl = await documentLinkFor(
+      {
+        _id: docId,
+        shareEnabled: true,
+        shareToken,
+        shareExpiresAt: new Date(Date.now() - 1000),
+      },
+      null,
+    );
+    expect(newUrl).not.toBe(oldUrl);
+    const newToken = newUrl.split("/share/")[1];
+    const refreshed = await getSharedDocument(newToken);
+    expect(refreshed?.status).toBe("active");
+
+    shareToken = newToken;
+  });
+
+  it("portal links expire and slide forward on active use", async () => {
+    const { enableContactPortal } = await import("@/lib/actions/portal");
+    const { findPortalContact } = await import("@/lib/portal-token");
+    const { collections } = await import("@/lib/db/client");
+
+    const res = await enableContactPortal(contactId.toHexString());
+    expect(res.ok).toBe(true);
+    expect(res.expiresAt).toBeTruthy();
+    expect(new Date(res.expiresAt!).getTime()).toBeGreaterThan(Date.now());
+    const token = res.url!.split("/portal/")[1];
+
+    const found = await findPortalContact(token);
+    expect(found?.name).toBe("E2E Client");
+
+    // Force-expire → no longer resolves.
+    await collections
+      .contacts()
+      .updateOne(
+        { _id: contactId },
+        { $set: { portalExpiresAt: new Date(Date.now() - 1000) } },
+      );
+    expect(await findPortalContact(token)).toBeNull();
+
+    // Re-enable, then simulate a link inside the renewal window: access
+    // slides the expiry out to the full portal TTL.
+    const res2 = await enableContactPortal(contactId.toHexString());
+    const token2 = res2.url!.split("/portal/")[1];
+    await collections
+      .contacts()
+      .updateOne(
+        { _id: contactId },
+        { $set: { portalExpiresAt: new Date(Date.now() + 10 * 86_400_000) } },
+      );
+    expect(await findPortalContact(token2)).not.toBeNull();
+    const row = await collections.contacts().findOne({ _id: contactId });
+    expect(row?.portalExpiresAt?.getTime()).toBeGreaterThan(
+      Date.now() + 170 * 86_400_000,
+    );
+  });
+});
+
+describe.skipIf(!hasDb)("in-app notifications (DB)", () => {
+  const stamp = Date.now();
+  const email = `e2e-notify-${stamp}@example.test`;
+  const memberEmail = `e2e-notify-member-${stamp}@example.test`;
+  const password = "Sup3rSecret!1";
+  let userId = "";
+  let memberId = "";
+  let workspaceId: ObjectId;
+  let docId: ObjectId;
+
+  beforeAll(async () => {
+    const { auth } = await import("@/lib/auth/config");
+    const { collections, getDb } = await import("@/lib/db/client");
+    await auth.api.signUpEmail({
+      body: { email, password, name: "E2E Notify" },
+      headers: new Headers(ORIGIN),
+    });
+    await auth.api.signUpEmail({
+      body: { email: memberEmail, password, name: "E2E Notify Member" },
+      headers: new Headers(ORIGIN),
+    });
+    state.cookie = await signInCookie(auth, email, password);
+
+    const owner = await getDb().collection("user").findOne({ email });
+    const member = await getDb().collection("user").findOne({ email: memberEmail });
+    userId = (owner?._id as ObjectId).toHexString();
+    memberId = (member?._id as ObjectId).toHexString();
+
+    const now = new Date();
+    workspaceId = new ObjectId();
+    await collections.workspaces().insertOne({
+      _id: workspaceId,
+      name: "E2E Notify WS",
+      slug: `e2e-notify-${stamp}`,
+      ownerUserId: userId,
+      currency: "USD",
+      taxRate: 0,
+      brandColor: "#B4552D",
+      brandColors: ["#B4552D"],
+      members: [{ userId: memberId, role: "member" }],
+      createdAt: now,
+      updatedAt: now,
+    } as never);
+
+    docId = new ObjectId();
+    await collections.documents().insertOne({
+      _id: docId,
+      workspaceId,
+      type: "invoice",
+      templateId: "minimal",
+      number: `INV-NTF-${stamp}`,
+      status: "sent",
+      issueDate: "2026-06-15",
+      currency: "USD",
+      items: [],
+      subtotal: 0,
+      discountTotal: 0,
+      taxTotal: 0,
+      total: 0,
+      content: { subject: "", body: "", terms: "" },
+      layout: { accentColor: "#B4552D" },
+      createdBy: userId,
+      deletedAt: null,
+      shareEnabled: false,
+      shareExpiresAt: new Date(Date.now() + 86_400_000),
+      createdAt: now,
+      updatedAt: now,
+    } as never);
+  });
+
+  afterAll(async () => {
+    state.cookie = "";
+    if (!hasDb) return;
+    const { collections, getDb } = await import("@/lib/db/client");
+    try {
+      const uid = new ObjectId(userId);
+      const mid = new ObjectId(memberId);
+      await getDb().collection("session").deleteMany({ userId: { $in: [uid, mid] } });
+      await getDb().collection("account").deleteMany({ userId: { $in: [uid, mid] } });
+      await getDb().collection("user").deleteMany({ _id: { $in: [uid, mid] } });
+      await collections.workspaces().deleteOne({ _id: workspaceId });
+      await collections.documents().deleteOne({ _id: docId });
+      await collections
+        .notifications()
+        .deleteMany({ workspaceId });
+      await collections.activity().deleteMany({ workspaceId });
+    } catch {
+      /* best-effort cleanup */
+    }
+  });
+
+  it("notifyWorkspace notifies the owner and every member, once each", async () => {
+    const { notifyWorkspace, listNotifications } = await import("@/lib/notify");
+    await notifyWorkspace({
+      workspaceId,
+      type: "payment_received",
+      title: "Payment of $10.00 received",
+      body: "INV test via bank",
+      href: `/app/documents/${docId.toHexString()}`,
+    });
+
+    const ownerList = await listNotifications(userId);
+    expect(ownerList.unread).toBe(1);
+    expect(ownerList.items[0]?.type).toBe("payment_received");
+    expect(ownerList.items[0]?.href).toBe(
+      `/app/documents/${docId.toHexString()}`,
+    );
+
+    const memberList = await listNotifications(memberId);
+    expect(memberList.unread).toBe(1);
+    expect(memberList.items[0]?.title).toContain("Payment of");
+  });
+
+  it("markNotificationRead only marks the caller's own notification", async () => {
+    const { markNotificationRead } = await import(
+      "@/lib/actions/notifications"
+    );
+    const { listNotifications } = await import("@/lib/notify");
+    const ownerList = await listNotifications(userId);
+    const memberList = await listNotifications(memberId);
+    const ownerItemId = ownerList.items[0]!.id;
+    const memberItemId = memberList.items[0]!.id;
+
+    // Signed in as the owner — reading a member's notification must be a no-op.
+    await markNotificationRead(memberItemId);
+    expect((await listNotifications(memberId)).unread).toBe(1);
+
+    await markNotificationRead(ownerItemId);
+    expect((await listNotifications(userId)).unread).toBe(0);
+
+    // Restore unread state for the cleanup assertions below.
+    const { collections } = await import("@/lib/db/client");
+    await collections
+      .notifications()
+      .updateMany({ workspaceId }, { $set: { readAt: null } });
+    expect((await listNotifications(userId)).unread).toBeGreaterThan(0);
+  });
+
+  it("runShareExpiryNotifications fires once per expiring share link", async () => {
+    const { runShareExpiryNotifications, listNotifications } = await import(
+      "@/lib/notify"
+    );
+    const { collections } = await import("@/lib/db/client");
+
+    // Share expires within the notice horizon.
+    await collections
+      .documents()
+      .updateOne(
+        { _id: docId },
+        {
+          $set: {
+            shareEnabled: true,
+            shareToken: `tok-${stamp}`,
+            shareExpiresAt: new Date(Date.now() + 2 * 86_400_000),
+          },
+          $unset: { shareExpiryNotifiedAt: "" },
+        },
+      );
+
+    const before = (await listNotifications(userId)).unread;
+    const first = await runShareExpiryNotifications();
+    expect(first).toBe(1);
+    expect((await listNotifications(userId)).unread).toBe(before + 1);
+
+    // Idempotent — the marker matches the expiry, so no second notification.
+    const second = await runShareExpiryNotifications();
+    expect(second).toBe(0);
+    expect((await listNotifications(userId)).unread).toBe(before + 1);
+
+    // An expired/quiet link (expires far out) is not picked up at all.
+    await collections
+      .documents()
+      .updateOne(
+        { _id: docId },
+        {
+          $set: { shareExpiresAt: new Date(Date.now() + 30 * 86_400_000) },
+          $unset: { shareExpiryNotifiedAt: "" },
+        },
+      );
+    expect(await runShareExpiryNotifications()).toBe(0);
+  });
+});

@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { requireWorkspace, toObjectId } from "@/lib/auth/session";
 import { collections } from "@/lib/db/client";
-import { generateShareToken, appBaseUrl } from "@/lib/share";
+import { generateShareToken, appBaseUrl, portalExpiry } from "@/lib/share";
+import { findPortalContact } from "@/lib/portal-token";
+import { notifyWorkspace } from "@/lib/notify";
 import { logActivity } from "@/lib/activity";
 import { VALID_TRANSITIONS } from "@/lib/constants";
 import { sumPayments } from "@/lib/finance";
@@ -14,7 +16,13 @@ import {
 } from "@/lib/signature";
 import type { Contact, LetterpadDoc, SignatureMethod, Workspace } from "@/lib/db/types";
 
-export type ActionResult = { ok: boolean; error?: string; url?: string };
+export type ActionResult = {
+  ok: boolean;
+  error?: string;
+  url?: string;
+  /** ISO expiry of the portal link (§22 expiring URLs) */
+  expiresAt?: string;
+};
 
 async function portalUrl(token: string): Promise<string> {
   return `${appBaseUrl()}/portal/${token}`;
@@ -33,12 +41,24 @@ export async function enableContactPortal(contactId: string): Promise<ActionResu
     if (!contact) return { ok: false, error: "Contact not found" };
 
     const token = generateShareToken();
+    const expiresAt = portalExpiry();
     await collections.contacts().updateOne(
       { _id: objectId, workspaceId: workspace._id },
-      { $set: { portalEnabled: true, portalToken: token, updatedAt: new Date() } },
+      {
+        $set: {
+          portalEnabled: true,
+          portalToken: token,
+          portalExpiresAt: expiresAt,
+          updatedAt: new Date(),
+        },
+      },
     );
     revalidatePath("/app/contacts");
-    return { ok: true, url: await portalUrl(token) };
+    return {
+      ok: true,
+      url: await portalUrl(token),
+      expiresAt: expiresAt.toISOString(),
+    };
   } catch (e) {
     return {
       ok: false,
@@ -56,8 +76,11 @@ export async function disableContactPortal(contactId: string): Promise<ActionRes
     await collections.contacts().updateOne(
       { _id: objectId, workspaceId: workspace._id },
       {
-        $set: { portalEnabled: false, updatedAt: new Date() },
-        $unset: { portalToken: "" },
+        $set: {
+          portalEnabled: false,
+          updatedAt: new Date(),
+        },
+        $unset: { portalToken: "", portalExpiresAt: "" },
       },
     );
     revalidatePath("/app/contacts");
@@ -83,9 +106,7 @@ function validToken(token: string): boolean {
 /** Load a contact portal: workspace + contact + their live, non-draft documents. */
 export async function getPortal(token: string): Promise<PortalData | null> {
   if (!validToken(token)) return null;
-  const contact = await collections
-    .contacts()
-    .findOne({ portalToken: token, portalEnabled: true });
+  const contact = await findPortalContact(token);
   if (!contact) return null;
 
   const workspace = await collections
@@ -117,9 +138,7 @@ export async function getPortalDocument(
   const objectId = toObjectId(documentId);
   if (!objectId) return null;
 
-  const contact = await collections
-    .contacts()
-    .findOne({ portalToken: token, portalEnabled: true });
+  const contact = await findPortalContact(token);
   if (!contact) return null;
 
   const workspace = await collections
@@ -162,10 +181,19 @@ export async function recordPortalView(
       actor: "client",
     });
     if (doc.status === "sent") {
-      await collections.documents().updateOne(
+      const res = await collections.documents().updateOne(
         { _id: doc._id, status: "sent" },
         { $set: { status: "viewed", updatedAt: new Date() } },
       );
+      if (res.modifiedCount > 0) {
+        await notifyWorkspace({
+          workspaceId: workspace._id,
+          type: "document_viewed",
+          title: "Document viewed",
+          body: `${doc.number} was viewed by ${data.contact.name} via the client portal`,
+          href: `/app/documents/${doc._id.toHexString()}`,
+        });
+      }
     }
   } catch {
     // best-effort
@@ -210,6 +238,13 @@ export async function respondToDocumentAction(
       type: "status",
       message: `Quotation ${decision} via client portal by ${contact.name}`,
       actor: "client",
+    });
+    await notifyWorkspace({
+      workspaceId: workspace._id,
+      type: decision === "accepted" ? "quote_accepted" : "quote_rejected",
+      title: `Quotation ${decision}`,
+      body: `${doc.number} ${decision} by ${contact.name}`,
+      href: `/app/documents/${documentId}`,
     });
 
     revalidatePath(`/portal/${token}/${documentId}`);
@@ -287,6 +322,13 @@ export async function signDocumentAction(
       message: `Signed by ${signedBy} (${signatureMethodLabel(input.method)})`,
       actor: "client",
     });
+    await notifyWorkspace({
+      workspaceId: workspace._id,
+      type: "signature_completed",
+      title: "Signature completed",
+      body: `${doc.number} signed by ${signedBy}`,
+      href: `/app/documents/${documentId}`,
+    });
 
     revalidatePath(`/portal/${token}/${documentId}`);
     revalidatePath(`/app/documents/${documentId}`);
@@ -318,9 +360,7 @@ export interface PortalPaymentRow {
 /** Payments recorded against this contact's documents. */
 export async function getPortalPayments(token: string): Promise<PortalPaymentRow[]> {
   if (!validToken(token)) return [];
-  const contact = await collections
-    .contacts()
-    .findOne({ portalToken: token, portalEnabled: true });
+  const contact = await findPortalContact(token);
   if (!contact) return [];
 
   const docs = await collections

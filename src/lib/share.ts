@@ -7,6 +7,15 @@
 
 const TOKEN_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 
+/** Public share links live 30 days from creation or refresh. */
+export const SHARE_TTL_DAYS = 30;
+/** Client-portal links live 180 days; active use slides the expiry forward. */
+export const PORTAL_TTL_DAYS = 180;
+/** Renew a portal when fewer than this many days remain. */
+export const PORTAL_RENEW_WINDOW_DAYS = 30;
+
+const DAY_MS = 86_400_000;
+
 export function generateShareToken(length = 32): string {
   const bytes = new Uint8Array(length);
   crypto.getRandomValues(bytes);
@@ -15,6 +24,30 @@ export function generateShareToken(length = 32): string {
     out += TOKEN_ALPHABET[bytes[i] % TOKEN_ALPHABET.length];
   }
   return out;
+}
+
+/** Expiry timestamp for a freshly enabled share link. */
+export function shareExpiry(from: Date = new Date()): Date {
+  return new Date(from.getTime() + SHARE_TTL_DAYS * DAY_MS);
+}
+
+/** Expiry timestamp for a freshly enabled portal link. */
+export function portalExpiry(from: Date = new Date()): Date {
+  return new Date(from.getTime() + PORTAL_TTL_DAYS * DAY_MS);
+}
+
+/**
+ * A link with no stored expiry is treated as expired (links created before
+ * expiry tracking must be re-enabled, which issues a fresh token).
+ */
+export function isExpired(
+  at: Date | string | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!at) return true;
+  const time = at instanceof Date ? at.getTime() : Date.parse(at);
+  if (Number.isNaN(time)) return true;
+  return time <= now.getTime();
 }
 
 export function appBaseUrl(): string {

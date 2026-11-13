@@ -20,6 +20,19 @@ export default async function SharePage({
   const { token } = await params;
   const shared = await getSharedDocument(token);
   if (!shared) notFound();
+  if (shared.status === "expired") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-paper px-4">
+        <div className="max-w-md rounded-[4px] border border-line bg-white p-8 text-center shadow-sm">
+          <p className="font-display text-xl text-ink">This link has expired</p>
+          <p className="mt-2 text-sm text-muted">
+            Share links are valid for a limited time. Please ask the sender
+            for a fresh link.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const { doc, workspace, contact } = shared;
   await recordShareView(token);

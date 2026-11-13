@@ -345,6 +345,8 @@ export interface Contact {
   /** Opaque client-portal token when sharing a contact folder */
   portalToken?: string;
   portalEnabled?: boolean;
+  /** After this date the portal token stops resolving (slides forward on use) */
+  portalExpiresAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -418,6 +420,10 @@ export interface LetterpadDoc {
   /** Opaque public share token when sharing is enabled */
   shareToken?: string;
   shareEnabled?: boolean;
+  /** After this date the share token stops resolving (§22 expiring URLs) */
+  shareExpiresAt?: Date;
+  /** Set when the owner was notified the share link is about to expire */
+  shareExpiryNotifiedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -430,6 +436,32 @@ export interface ActivityEvent {
   message: string;
   /** User id, or "system" / "client" for external actors */
   actor: string;
+  createdAt: Date;
+}
+
+/** §11.3 in-app notification kinds. */
+export type NotificationType =
+  | "payment_received"
+  | "invoice_overdue"
+  | "quote_accepted"
+  | "quote_rejected"
+  | "document_viewed"
+  | "signature_completed"
+  | "payment_request_paid"
+  | "document_expiring"
+  | "team_invite";
+
+export interface AppNotification {
+  _id: ObjectId;
+  workspaceId: ObjectId;
+  /** Recipient: workspace owner or member user id */
+  userId: string;
+  type: NotificationType;
+  title: string;
+  body?: string;
+  /** In-app link target (absolute path) */
+  href?: string;
+  readAt?: Date | null;
   createdAt: Date;
 }
 

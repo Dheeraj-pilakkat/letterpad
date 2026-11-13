@@ -5,6 +5,7 @@ import { runAllDueSchedules } from "@/lib/recurring-runner";
 import { runAutoReminders } from "@/lib/reminders";
 import { runDueDeliveries } from "@/lib/deliveries";
 import { runWorkflowMaintenance } from "@/lib/workflows-runner";
+import { runShareExpiryNotifications } from "@/lib/notify";
 
 /**
  * Cron endpoint for recurring documents + Phase 5 automation.
@@ -17,6 +18,7 @@ import { runWorkflowMaintenance } from "@/lib/workflows-runner";
  *   2. workflow maintenance     → expires quotations, marks invoices overdue
  *   3. automatic payment reminders (needs RESEND_API_KEY to actually send)
  *   4. scheduled document deliveries (same email requirement)
+ *   5. share-link expiry notifications (§11.3 document expiring)
  *
  * Safe to call repeatedly — every step is idempotent per record. Schedule a
  * job (Vercel Cron, GitHub Actions, cron job) to hit this at least daily;
@@ -46,6 +48,7 @@ export async function POST(request: Request) {
     const workflows = await runWorkflowMaintenance();
     const reminders = await runAutoReminders();
     const deliveries = await runDueDeliveries();
+    const expiringShares = await runShareExpiryNotifications();
 
     return NextResponse.json({
       ok: true,
@@ -56,6 +59,7 @@ export async function POST(request: Request) {
       workflows,
       reminders,
       deliveries,
+      expiringShares,
     });
   } catch (e) {
     return NextResponse.json(

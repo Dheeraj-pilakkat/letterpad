@@ -1,6 +1,7 @@
 import { collections } from "@/lib/db/client";
 import { isQuoteExpired, needsOverdueMark } from "@/lib/automation";
 import { todayIsoDate } from "@/lib/utils";
+import { notifyWorkspace } from "@/lib/notify";
 
 /**
  * Cron pass for §8/§15 automatic status updates:
@@ -54,7 +55,16 @@ export async function runWorkflowMaintenance(
       { _id: doc._id, status: doc.status },
       { $set: { status: "overdue", updatedAt: new Date() } },
     );
-    if (res.modifiedCount > 0) overdue += 1;
+    if (res.modifiedCount > 0) {
+      overdue += 1;
+      await notifyWorkspace({
+        workspaceId: doc.workspaceId,
+        type: "invoice_overdue",
+        title: `Invoice ${doc.number} is overdue`,
+        body: doc.dueDate ? `Was due ${doc.dueDate}` : undefined,
+        href: `/app/documents/${doc._id.toHexString()}`,
+      });
+    }
   }
 
   return { expired, overdue };
