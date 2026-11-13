@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, Plus, Trash2, PackageSearch, Loader2 } from "lucide-react";
 import type { CustomColumn, LineItemColumns } from "@/lib/db/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { cn, formatMoney, round2 } from "@/lib/utils";
 import { computeTotals } from "@/lib/validation/schemas";
+import { getCatalogueItems, type CatalogueItem } from "@/lib/actions/products";
 
 export interface ItemDraft {
   description: string;
@@ -134,6 +135,43 @@ export function LineItems({
   const [addingColumn, setAddingColumn] = useState(false);
   const [newLabel, setNewLabel] = useState("");
   const [newType, setNewType] = useState<"text" | "number">("text");
+  const [catalogueOpen, setCatalogueOpen] = useState(false);
+  const [catalogue, setCatalogue] = useState<CatalogueItem[] | null>(null);
+  const [catalogueLoading, setCatalogueLoading] = useState(false);
+  const [catalogueQuery, setCatalogueQuery] = useState("");
+
+  async function openCatalogue() {
+    setCatalogueOpen((v) => !v);
+    if (catalogue !== null || catalogueLoading) return;
+    setCatalogueLoading(true);
+    try {
+      const rows = await getCatalogueItems();
+      setCatalogue(rows);
+    } catch {
+      setCatalogue([]);
+    } finally {
+      setCatalogueLoading(false);
+    }
+  }
+
+  function pickFromCatalogue(product: CatalogueItem) {
+    if (items.length >= MAX_ITEMS) return;
+    onChange([
+      ...items,
+      {
+        description: product.name,
+        quantity: 1,
+        unitPrice: product.unitPrice,
+        taxRate: Math.min(Math.max(product.taxRate, 0), 100),
+      },
+    ]);
+    setCatalogueOpen(false);
+    setCatalogueQuery("");
+  }
+
+  const catalogueMatches = (catalogue ?? []).filter((p) =>
+    p.name.toLowerCase().includes(catalogueQuery.trim().toLowerCase()),
+  );
 
   function update(index: number, patch: Partial<ItemDraft>) {
     onChange(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
@@ -376,7 +414,7 @@ export function LineItems({
                               className={cn(
                                 "rounded-[2px] border px-2 py-1 text-[10px] leading-none transition-colors",
                                 item.taxRate === preset
-                                  ? "border-copper bg-copper/10 text-copper"
+                                  ? "border-royal bg-royal/10 text-royal"
                                   : "border-line text-muted hover:border-ink/40",
                               )}
                             >
@@ -454,6 +492,72 @@ export function LineItems({
               <Plus size={14} /> Add line
             </Button>
 
+            <div className="relative">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={openCatalogue}
+                aria-expanded={catalogueOpen}
+                title="Add from your saved products & services"
+              >
+                <PackageSearch size={14} /> Catalogue
+              </Button>
+              {catalogueOpen ? (
+                <>
+                  <div
+                    className="fixed inset-0 z-20"
+                    aria-hidden
+                    onClick={() => setCatalogueOpen(false)}
+                  />
+                  <div className="absolute left-0 top-full z-30 mt-1 w-72 rounded-[4px] border border-line bg-white p-2 shadow-lg">
+                  <input
+                    autoFocus
+                    value={catalogueQuery}
+                    onChange={(e) => setCatalogueQuery(e.target.value)}
+                    placeholder="Search products…"
+                    aria-label="Search catalogue"
+                    className="mb-2 h-8 w-full rounded-[3px] border border-line bg-white px-2 text-sm text-ink placeholder:text-ink-soft/50 focus:border-royal focus:outline-none"
+                  />
+                  <div className="max-h-56 overflow-y-auto">
+                    {catalogueLoading ? (
+                      <p className="flex items-center gap-2 px-1 py-3 text-xs text-muted">
+                        <Loader2 size={12} className="animate-spin" /> Loading catalogue…
+                      </p>
+                    ) : catalogueMatches.length === 0 ? (
+                      <p className="px-1 py-3 text-xs text-muted">
+                        {catalogue && catalogue.length === 0
+                          ? "No active products yet. Add some in Products."
+                          : "No matches."}
+                      </p>
+                    ) : (
+                      catalogueMatches.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => pickFromCatalogue(p)}
+                          className="flex w-full items-center justify-between gap-2 rounded-[3px] px-2 py-1.5 text-left text-sm hover:bg-paper"
+                        >
+                          <span className="truncate text-ink">{p.name}</span>
+                          <span className="shrink-0 tabular-nums text-xs text-muted">
+                            {formatMoney(p.unitPrice, currency)}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCatalogueOpen(false)}
+                    className="mt-1 w-full rounded-[3px] px-2 py-1 text-left text-xs text-muted hover:text-ink"
+                  >
+                    Close
+                  </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+
             {addingColumn ? (
               <span className="inline-flex items-center gap-1.5">
                 <input
@@ -470,13 +574,13 @@ export function LineItems({
                   placeholder="Column name (e.g. Discount)"
                   maxLength={40}
                   aria-label="New column name"
-                  className="h-8 w-52 rounded-[3px] border border-line bg-white px-2 text-sm text-ink placeholder:text-ink-soft/50 focus:border-copper focus:outline-none"
+                  className="h-8 w-52 rounded-[3px] border border-line bg-white px-2 text-sm text-ink placeholder:text-ink-soft/50 focus:border-royal focus:outline-none"
                 />
                 <select
                   value={newType}
                   onChange={(e) => setNewType(e.target.value as "text" | "number")}
                   aria-label="New column type"
-                  className="h-8 rounded-[3px] border border-line bg-white px-2 text-sm text-ink focus:border-copper focus:outline-none"
+                  className="h-8 rounded-[3px] border border-line bg-white px-2 text-sm text-ink focus:border-royal focus:outline-none"
                 >
                   <option value="text">Text</option>
                   <option value="number">Number</option>
@@ -544,7 +648,7 @@ export function LineItems({
               </span>
             </div>
           ) : null}
-          <div className="flex justify-between border-t border-line pt-1.5 font-medium text-copper">
+          <div className="flex justify-between border-t border-line pt-1.5 font-medium text-royal">
             <span>Total</span>
             <span className="tabular-nums">{formatMoney(totals.total, currency)}</span>
           </div>

@@ -60,7 +60,7 @@ export function SignUpForm() {
       </Button>
       <p className="text-center text-sm text-muted">
         Already have an account?{" "}
-        <Link className="text-copper underline underline-offset-2 hover:text-copper-soft" href="/sign-in">
+        <Link className="text-royal underline underline-offset-2 hover:text-royal-soft" href="/sign-in">
           Sign in
         </Link>
       </p>

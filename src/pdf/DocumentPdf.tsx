@@ -9,6 +9,7 @@ import {
 import type { Style } from "@react-pdf/types";
 import type { DocumentItem, DocumentContent, DocumentStatus, DocumentType, TemplateLayout } from "@/lib/db/types";
 import { documentLabel, fontFamilyTokens, templateById } from "@/lib/templates/registry";
+import { gstTotalRows } from "@/lib/finance";
 import { formatDate, formatMoney } from "@/lib/utils";
 import { pdfStyles as s } from "./styles";
 
@@ -33,8 +34,13 @@ export interface PdfWorkspace {
   email?: string;
   website?: string;
   taxId?: string;
+  pan?: string;
+  upiId?: string;
+  paymentInstructions?: string;
   bankDetails?: string;
   brandColor: string;
+  /** Workspace tax label (GST / VAT / Sales Tax …) for the totals row */
+  taxLabel?: string;
 }
 
 export interface PdfDoc {
@@ -48,10 +54,25 @@ export interface PdfDoc {
   currency: string;
   items: DocumentItem[];
   subtotal: number;
+  discountTotal?: number;
   taxTotal: number;
   total: number;
+  discount?: { type: "percent" | "amount"; value: number };
+  /** GST split (CGST/SGST or IGST) captured when the workspace has GST on */
+  gst?: { placeOfSupply: string; cgst: number; sgst: number; igst: number };
   content: DocumentContent;
   layout: TemplateLayout;
+  /** Set when the business has asked the client to sign */
+  signatureRequested?: boolean;
+  /** Client signature captured through the portal (signedAt as ISO string or Date) */
+  signature?: {
+    signedBy: string;
+    method: "drawn" | "typed" | "uploaded";
+    image?: string;
+    text?: string;
+    signedAt: string | Date;
+    ip?: string;
+  };
 }
 
 export interface PdfContact {
@@ -65,6 +86,7 @@ export interface PdfContact {
   state?: string;
   postalCode?: string;
   country?: string;
+  taxId?: string;
 }
 
 export interface DocumentPdfProps {
@@ -103,6 +125,7 @@ export function DocumentPdf({ workspace, doc, contact }: DocumentPdfProps) {
   const showLogo = doc.layout.showLogo !== false && Boolean(workspace.logo);
   const label = documentLabel(doc.type, doc.templateId);
   const isAmountDue = doc.type === "invoice" || doc.type === "request";
+  const gstRows = gstTotalRows(doc.gst, doc.taxTotal);
 
   const businessLines = addressLines([
     workspace.addressLine1,
@@ -223,6 +246,9 @@ export function DocumentPdf({ workspace, doc, contact }: DocumentPdfProps) {
             ))}
             {contact.email ? <Text style={s.value}>{contact.email}</Text> : null}
             {contact.phone ? <Text style={s.value}>{contact.phone}</Text> : null}
+            {contact.taxId ? (
+              <Text style={s.value}>Tax ID: {contact.taxId}</Text>
+            ) : null}
           </>
         ) : (
           <Text style={st([s.value, { color: "#8A8578" }])}>—</Text>
@@ -335,10 +361,40 @@ export function DocumentPdf({ workspace, doc, contact }: DocumentPdfProps) {
               <Text style={st({ color: "#5C6470" })}>Subtotal</Text>
               <Text>{formatMoney(doc.subtotal, doc.currency)}</Text>
             </View>
-            {doc.taxTotal > 0 ? (
+            {(doc.discountTotal ?? 0) > 0 ? (
               <View style={s.totalRow}>
-                <Text style={st({ color: "#5C6470" })}>Tax</Text>
+                <Text style={st({ color: "#5C6470" })}>
+                  Discount
+                  {doc.discount?.type === "percent"
+                    ? ` (${qtyLabel(doc.discount.value)}%)`
+                    : ""}
+                </Text>
+                <Text>
+                  −{formatMoney(doc.discountTotal ?? 0, doc.currency)}
+                </Text>
+              </View>
+            ) : null}
+            {gstRows.length > 0 ? (
+              gstRows.map((row) => (
+                <View key={row.label} style={s.totalRow}>
+                  <Text style={st({ color: "#5C6470" })}>{row.label}</Text>
+                  <Text>{formatMoney(row.amount, doc.currency)}</Text>
+                </View>
+              ))
+            ) : doc.taxTotal > 0 ? (
+              <View style={s.totalRow}>
+                <Text style={st({ color: "#5C6470" })}>
+                  {workspace.taxLabel ?? "Tax"}
+                </Text>
                 <Text>{formatMoney(doc.taxTotal, doc.currency)}</Text>
+              </View>
+            ) : null}
+            {doc.gst?.placeOfSupply ? (
+              <View style={s.totalRow}>
+                <Text style={st({ color: "#5C6470", fontSize: 8 })}>
+                  Place of supply: {doc.gst.placeOfSupply}
+                </Text>
+                <Text />
               </View>
             ) : null}
             <View
@@ -409,8 +465,16 @@ export function DocumentPdf({ workspace, doc, contact }: DocumentPdfProps) {
     </View>
   ) : null;
 
+  const paymentLines = [
+    workspace.bankDetails,
+    workspace.upiId ? `UPI: ${workspace.upiId}` : null,
+    workspace.paymentInstructions,
+  ]
+    .filter((x): x is string => Boolean(x && x.trim()))
+    .join("\n");
+
   const bankDetails =
-    kind === "itemized" && workspace.bankDetails ? (
+    kind === "itemized" && paymentLines ? (
       <View
         style={st({
           marginTop: 14,
@@ -422,8 +486,13 @@ export function DocumentPdf({ workspace, doc, contact }: DocumentPdfProps) {
       >
         <Text style={s.label}>PAYMENT DETAILS</Text>
         <Text style={st({ fontSize: 8.5, lineHeight: 1.5, color: "#3D4657" })}>
-          {workspace.bankDetails}
+          {paymentLines}
         </Text>
+        {workspace.pan ? (
+          <Text style={st({ fontSize: 7.5, color: "#8A8578", marginTop: 4 })}>
+            PAN: {workspace.pan}
+          </Text>
+        ) : null}
       </View>
     ) : null;
 
@@ -438,6 +507,39 @@ export function DocumentPdf({ workspace, doc, contact }: DocumentPdfProps) {
         {workspace.name}
       </Text>
       <Text style={st({ fontSize: 7.5, color: "#8A8578" })}>Authorised signatory</Text>
+    </View>
+  ) : null;
+
+  const signatureMethodLabel =
+    doc.signature?.method === "drawn"
+      ? "Drawn signature"
+      : doc.signature?.method === "uploaded"
+        ? "Uploaded signature image"
+        : "Typed signature";
+
+  const clientSignature = doc.signature ? (
+    <View style={st({ marginTop: 26, width: 230 })}>
+      {doc.signature.image ? (
+        <Image
+          src={doc.signature.image}
+          style={st({ width: 150, height: 46, objectFit: "contain" })}
+        />
+      ) : (
+        <Text style={st({ fontSize: 16, fontFamily: "Times-Italic", color: "#1C2536" })}>
+          {doc.signature.text ?? doc.signature.signedBy}
+        </Text>
+      )}
+      <Text style={st({ fontSize: 8.5, marginTop: 3, color: "#3D4657" })}>
+        {doc.signature.signedBy}
+      </Text>
+      <Text style={st({ fontSize: 7.5, color: "#8A8578" })}>
+        {signatureMethodLabel} · signed{" "}
+        {new Date(doc.signature.signedAt).toISOString().slice(0, 10)}
+      </Text>
+      <Text style={st({ fontSize: 6.5, color: "#A8A294", marginTop: 2, lineHeight: 1.4 })}>
+        Electronically signed in the client portal. Not a qualified digital
+        signature under eIDAS/ITA eSign rules.
+      </Text>
     </View>
   ) : null;
 
@@ -459,7 +561,12 @@ export function DocumentPdf({ workspace, doc, contact }: DocumentPdfProps) {
         {itemsTable}
         {terms}
         {bankDetails}
-        {signature}
+        <View style={st({ flexDirection: "row", alignItems: "flex-start" })}>
+          {signature ? (
+            <View style={st({ marginRight: 40 })}>{signature}</View>
+          ) : null}
+          {clientSignature}
+        </View>
 
         <View style={s.footer} fixed>
           <Text style={s.footerText}>

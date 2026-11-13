@@ -1,4 +1,4 @@
-import type { Contact, LetterpadDoc, Workspace } from "@/lib/db/types";
+import type { Contact, LetterpadDoc, Payment, Workspace } from "@/lib/db/types";
 import type { PdfContact, PdfDoc, PdfWorkspace } from "@/pdf/DocumentPdf";
 import type { EditorDoc } from "@/components/documents/document-editor";
 import type { ContactOption } from "@/components/documents/document-editor";
@@ -20,10 +20,14 @@ export function toPdfWorkspace(ws: Workspace): PdfWorkspace {
     email: ws.email,
     website: ws.website,
     taxId: ws.taxId,
+    pan: ws.pan,
+    upiId: ws.upiId,
+    paymentInstructions: ws.paymentInstructions,
     bankDetails: ws.bankDetails,
     brandColor: ws.brandColor,
     brandColors: ws.brandColors,
     taxRate: ws.taxRate,
+    taxLabel: ws.taxConfig?.label,
   };
 }
 
@@ -41,10 +45,25 @@ export function toEditorDoc(doc: LetterpadDoc): EditorDoc {
     currency: doc.currency,
     items: doc.items,
     subtotal: doc.subtotal,
+    discountTotal: doc.discountTotal ?? 0,
     taxTotal: doc.taxTotal,
     total: doc.total,
+    discount: doc.discount,
+    gst: doc.gst ?? undefined,
     content: doc.content,
     layout: doc.layout,
+    shareEnabled: doc.shareEnabled ?? false,
+    signatureRequested: doc.signatureRequested ?? false,
+    signature: doc.signature
+      ? {
+          signedBy: doc.signature.signedBy,
+          method: doc.signature.method,
+          image: doc.signature.image,
+          text: doc.signature.text,
+          signedAt: doc.signature.signedAt.toISOString(),
+          ip: doc.signature.ip,
+        }
+      : undefined,
   };
 }
 
@@ -71,9 +90,32 @@ export function toContactOption(c: Contact): ContactOption {
     state: c.state,
     postalCode: c.postalCode,
     country: c.country,
+    taxId: c.taxId,
   };
 }
 
 export function toPdfContact(c: Contact): PdfContact {
   return omitKeys(toContactOption(c), ["id"]);
+}
+
+export interface PaymentDTO {
+  id: string;
+  amount: number;
+  date: string;
+  method: string;
+  reference?: string;
+  notes?: string;
+  refunded: boolean;
+}
+
+export function toPaymentDTO(p: Payment): PaymentDTO {
+  return {
+    id: p._id.toHexString(),
+    amount: p.amount,
+    date: p.date,
+    method: p.method,
+    reference: p.reference,
+    notes: p.notes,
+    refunded: p.refunded ?? false,
+  };
 }

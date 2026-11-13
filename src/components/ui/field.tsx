@@ -29,7 +29,7 @@ export function Field({
 }
 
 const controlClass =
-  "block w-full rounded-[3px] border border-line bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:border-copper focus:outline-none focus:ring-1 focus:ring-copper/40 disabled:bg-paper-dim";
+  "block w-full rounded-[3px] border border-line bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:border-royal focus:outline-none focus:ring-1 focus:ring-royal/40 disabled:bg-paper-dim";
 
 export function Input({
   className,

@@ -13,6 +13,8 @@ export interface TemplateDef {
   kind: TemplateKind;
   description: string;
   layout: TemplateLayout;
+  /** Requires the Starter plan or higher (§20 premium templates) */
+  premium?: boolean;
 }
 
 export const TYPE_META: Record<
@@ -44,6 +46,16 @@ export const TYPE_META: Record<
     plural: "Letters",
     blurb: "Any formal correspondence, printed on your stationery.",
   },
+  creditNote: {
+    label: "Credit Note",
+    plural: "Credit Notes",
+    blurb: "Reduce a bill for returns, cancelled work or agreed discounts.",
+  },
+  debitNote: {
+    label: "Debit Note",
+    plural: "Debit Notes",
+    blurb: "Record an extra charge against a client after the bill.",
+  },
 };
 
 export const TEMPLATES: TemplateDef[] = [
@@ -62,6 +74,16 @@ export const TEMPLATES: TemplateDef[] = [
     kind: "itemized",
     description: "Bold accent band with clean sans-serif table.",
     layout: { headerStyle: "banner", fontPair: "sans", showLogo: true },
+    premium: true,
+  },
+  {
+    id: "quote-center",
+    type: "quote",
+    name: "Centered Quote",
+    kind: "itemized",
+    description: "Centred masthead, airy sans table — light and open.",
+    layout: { headerStyle: "center", fontPair: "sans", showLogo: true },
+    premium: true,
   },
   {
     id: "invoice-classic",
@@ -78,6 +100,16 @@ export const TEMPLATES: TemplateDef[] = [
     kind: "itemized",
     description: "Accent band header with a prominent amount due.",
     layout: { headerStyle: "banner", fontPair: "sans", showLogo: true },
+    premium: true,
+  },
+  {
+    id: "invoice-center",
+    type: "invoice",
+    name: "Centered Bill",
+    kind: "itemized",
+    description: "Centred letterhead with serif numbers and clean totals.",
+    layout: { headerStyle: "center", fontPair: "mixed", showLogo: true },
+    premium: true,
   },
   {
     id: "request-payment",
@@ -88,12 +120,22 @@ export const TEMPLATES: TemplateDef[] = [
     layout: { headerStyle: "left", fontPair: "mixed", showLogo: true },
   },
   {
+    id: "request-modern",
+    type: "request",
+    name: "Modern Payment Request",
+    kind: "itemized",
+    description: "Accent band masthead for a direct, contemporary ask.",
+    layout: { headerStyle: "banner", fontPair: "sans", showLogo: true },
+    premium: true,
+  },
+  {
     id: "request-letter",
     type: "request",
     name: "Formal Request Letter",
     kind: "prose",
     description: "A formal letter for requests, approvals or documents.",
     layout: { headerStyle: "left", fontPair: "serif", showLogo: true, showSignature: true },
+    premium: true,
   },
   {
     id: "receipt-classic",
@@ -102,6 +144,24 @@ export const TEMPLATES: TemplateDef[] = [
     kind: "itemized",
     description: "Centred masthead with a paid acknowledgement.",
     layout: { headerStyle: "center", fontPair: "sans", showLogo: true },
+  },
+  {
+    id: "receipt-modern",
+    type: "receipt",
+    name: "Modern Receipt",
+    kind: "itemized",
+    description: "Bold accent band with a crisp payment confirmation.",
+    layout: { headerStyle: "banner", fontPair: "sans", showLogo: true },
+    premium: true,
+  },
+  {
+    id: "receipt-minimal",
+    type: "receipt",
+    name: "Minimal Receipt",
+    kind: "itemized",
+    description: "Serif, no logo — pure typographic acknowledgement.",
+    layout: { headerStyle: "center", fontPair: "serif", showLogo: false },
+    premium: true,
   },
   {
     id: "letter-classic",
@@ -118,6 +178,7 @@ export const TEMPLATES: TemplateDef[] = [
     kind: "prose",
     description: "Accent band masthead, clean sans body.",
     layout: { headerStyle: "banner", fontPair: "sans", showLogo: true, showSignature: true },
+    premium: true,
   },
   {
     id: "letter-minimal",
@@ -126,6 +187,32 @@ export const TEMPLATES: TemplateDef[] = [
     kind: "prose",
     description: "Centred, serif, no logo — pure typography.",
     layout: { headerStyle: "center", fontPair: "serif", showSignature: true },
+    premium: true,
+  },
+  {
+    id: "credit-note-classic",
+    type: "creditNote",
+    name: "Classic Credit Note",
+    kind: "itemized",
+    description: "Traditional masthead adjusting an original bill.",
+    layout: { headerStyle: "left", fontPair: "mixed", showLogo: true },
+  },
+  {
+    id: "credit-note-modern",
+    type: "creditNote",
+    name: "Modern Credit Note",
+    kind: "itemized",
+    description: "Accent band header for returns and discounts.",
+    layout: { headerStyle: "banner", fontPair: "sans", showLogo: true },
+    premium: true,
+  },
+  {
+    id: "debit-note-classic",
+    type: "debitNote",
+    name: "Classic Debit Note",
+    kind: "itemized",
+    description: "Formal additional-charge note on your letterhead.",
+    layout: { headerStyle: "left", fontPair: "mixed", showLogo: true },
   },
 ];
 
@@ -143,6 +230,8 @@ export const DOCUMENT_TYPES: DocumentType[] = [
   "request",
   "receipt",
   "letter",
+  "creditNote",
+  "debitNote",
 ];
 
 export function isItemized(type: DocumentType, templateId: string): boolean {

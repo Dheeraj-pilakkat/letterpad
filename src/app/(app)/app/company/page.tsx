@@ -24,6 +24,7 @@ export default async function CompanyPage() {
     bankDetails: workspace.bankDetails,
     currency: workspace.currency,
     taxRate: workspace.taxRate,
+    taxConfig: workspace.taxConfig,
     brandColor: workspace.brandColor,
     brandColors: workspace.brandColors,
   };
@@ -31,6 +32,9 @@ export default async function CompanyPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <header className="mb-8">
+        <p className="mb-2 font-display text-sm tracking-wide text-royal">
+          STEP 2 OF 2
+        </p>
         <h1 className="font-display text-3xl text-ink">Your letterhead</h1>
         <p className="mt-1 text-sm text-muted">
           The business details printed on every quotation, bill and letter.

@@ -90,3 +90,24 @@ export async function archiveContact(id: string): Promise<ActionResult> {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to archive contact" };
   }
 }
+
+export async function restoreContact(id: string): Promise<ActionResult> {
+  try {
+    const { workspace } = await requireWorkspace();
+    const objectId = toObjectId(id);
+    if (!objectId) return { ok: false, error: "Invalid contact id" };
+    const result = await collections
+      .contacts()
+      .updateOne(
+        { _id: objectId, workspaceId: workspace._id, archived: true },
+        { $set: { archived: false, updatedAt: new Date() } },
+      );
+    if (result.matchedCount === 0) {
+      return { ok: false, error: "Archived contact not found" };
+    }
+    revalidatePath("/app/contacts");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to restore contact" };
+  }
+}

@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { updateWorkspace } from "@/lib/actions/workspace";
 import type { Workspace } from "@/lib/db/types";
 import { BRAND_COLORS, CURRENCIES } from "@/lib/constants";
+import { NUMBER_PREFIX, cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 
 type WorkspaceDTO = Omit<Workspace, "_id" | "createdAt" | "updatedAt" | "ownerUserId" | "slug">;
 
@@ -324,6 +324,31 @@ export function CompanyForm({ workspace }: { workspace: WorkspaceDTO }) {
           <Field label="Tax ID / GSTIN">
             <Input name="taxId" defaultValue={workspace.taxId} />
           </Field>
+          <Field label="PAN">
+            <Input name="pan" defaultValue={workspace.pan} placeholder="ABCDE1234F" />
+          </Field>
+          <Field
+            label="Tax label"
+            hint="Printed on PDFs in place of “Tax” — GST, VAT, Sales Tax…"
+          >
+            <Input
+              name="taxLabel"
+              defaultValue={workspace.taxConfig?.label}
+              placeholder="GST"
+              maxLength={40}
+            />
+          </Field>
+          <Field
+            label="Tax jurisdiction"
+            hint="Country or region the tax applies to"
+          >
+            <Input
+              name="taxCountry"
+              defaultValue={workspace.taxConfig?.country}
+              placeholder="India"
+              maxLength={64}
+            />
+          </Field>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Currency">
               <Select name="currency" defaultValue={workspace.currency}>
@@ -343,6 +368,43 @@ export function CompanyForm({ workspace }: { workspace: WorkspaceDTO }) {
               />
             </Field>
           </div>
+          <Field label="UPI ID" hint="Shown in payment details on bills">
+            <Input name="upiId" defaultValue={workspace.upiId} placeholder="business@okhdfcbank" />
+          </Field>
+          <div className="sm:col-span-2">
+            <label className="flex cursor-pointer select-none items-start gap-2">
+              <input
+                type="checkbox"
+                name="gstEnabled"
+                defaultChecked={workspace.gstEnabled === true}
+                className="mt-0.5 size-3.5 accent-royal"
+              />
+              <span>
+                <span className="text-xs font-medium text-ink-soft">Enable GST</span>
+                <span className="mt-0.5 block text-xs text-muted">
+                  Splits tax into CGST/SGST (same state) or IGST (inter-state) on documents.
+                </span>
+              </span>
+            </label>
+            <div className="mt-3">
+              <Field label="Place of supply" hint="State used to decide intra-state vs inter-state GST">
+                <Input
+                  name="placeOfSupply"
+                  defaultValue={workspace.placeOfSupply ?? workspace.state}
+                  placeholder="Karnataka"
+                  className="sm:max-w-64"
+                />
+              </Field>
+            </div>
+          </div>
+          <Field label="Payment instructions" className="sm:col-span-2">
+            <Textarea
+              name="paymentInstructions"
+              rows={2}
+              defaultValue={workspace.paymentInstructions}
+              placeholder="Pay within 7 days. Reference the invoice number when paying."
+            />
+          </Field>
           <Field label="Bank details" hint="Printed on bills and payment requests" className="sm:col-span-2">
             <Textarea
               name="bankDetails"
@@ -352,6 +414,81 @@ export function CompanyForm({ workspace }: { workspace: WorkspaceDTO }) {
             />
           </Field>
         </div>
+      </section>
+
+      {/* document numbering */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-medium text-ink">Document numbering</h2>
+        <p className="text-xs text-muted">
+          Customise the prefix, starting number and zero-pad for each document type.
+          Existing counters keep their current sequence.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[480px] text-sm">
+            <thead>
+              <tr className="border-b border-line text-left text-xs text-muted">
+                <th className="py-2 pr-3">Type</th>
+                <th className="py-2 pr-3">Prefix</th>
+                <th className="py-2 pr-3">Start at</th>
+                <th className="py-2">Example</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line/70">
+              {(
+                [
+                  ["invoice", "Bill"],
+                  ["quote", "Quotation"],
+                  ["receipt", "Receipt"],
+                  ["request", "Request"],
+                  ["letter", "Letter"],
+                  ["creditNote", "Credit Note"],
+                  ["debitNote", "Debit Note"],
+                ] as const
+              ).map(([type, label]) => {
+                const prefix =
+                  workspace.numberPrefixes?.[type] ?? NUMBER_PREFIX[type];
+                const start = workspace.numberStarts?.[type] ?? 1;
+                const pad = workspace.numberPad ?? 4;
+                const example = `${prefix}-${String(start).padStart(pad, "0")}`;
+                return (
+                  <tr key={type}>
+                    <td className="py-2 pr-3 text-ink">{label}</td>
+                    <td className="py-2 pr-3">
+                      <Input
+                        name={`numberPrefix.${type}`}
+                        defaultValue={workspace.numberPrefixes?.[type] ?? ""}
+                        placeholder={prefix}
+                        className="h-8 w-24 text-xs"
+                        maxLength={8}
+                      />
+                    </td>
+                    <td className="py-2 pr-3">
+                      <Input
+                        name={`numberStart.${type}`}
+                        type="number"
+                        min={0}
+                        defaultValue={workspace.numberStarts?.[type] ?? ""}
+                        placeholder={String(start)}
+                        className="h-8 w-24 text-xs"
+                      />
+                    </td>
+                    <td className="py-2 font-mono text-xs text-muted">{example}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <Field label="Zero-pad width" hint="Digits in the number segment (4 → 0001)">
+          <Input
+            name="numberPad"
+            type="number"
+            min={1}
+            max={8}
+            defaultValue={workspace.numberPad ?? 4}
+            className="w-28"
+          />
+        </Field>
       </section>
 
       {error ? <p className="text-sm text-red" role="alert">{error}</p> : null}

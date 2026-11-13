@@ -10,16 +10,25 @@ import {
 } from "@/lib/templates/registry";
 
 describe("template registry", () => {
-  it("has 10 templates with unique ids", () => {
-    expect(TEMPLATES).toHaveLength(10);
+  it("has 18 templates with unique ids", () => {
+    expect(TEMPLATES).toHaveLength(18);
     const ids = TEMPLATES.map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("covers all five document types", () => {
+  it("covers all seven document types", () => {
+    expect(DOCUMENT_TYPES).toHaveLength(7);
     for (const type of DOCUMENT_TYPES) {
       expect(templatesForType(type).length).toBeGreaterThan(0);
     }
+  });
+
+  it("ships credit and debit note templates", () => {
+    const credits = templatesForType("creditNote");
+    const debits = templatesForType("debitNote");
+    expect(credits.length).toBeGreaterThanOrEqual(2);
+    expect(debits.length).toBeGreaterThanOrEqual(1);
+    expect([...credits, ...debits].every((t) => t.type.endsWith("Note"))).toBe(true);
   });
 
   it("every template has a name, description, kind and layout", () => {

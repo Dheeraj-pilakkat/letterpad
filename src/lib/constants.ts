@@ -9,6 +9,10 @@ export const CURRENCIES = [
   "CAD",
   "AED",
   "SGD",
+  "JPY",
+  "CHF",
+  "NZD",
+  "SAR",
 ] as const;
 
 export const BRAND_COLORS = [
@@ -23,8 +27,39 @@ export const BRAND_COLORS = [
 /** Legal document status transitions, guarded in updateDocumentStatusAction. */
 export const VALID_TRANSITIONS: Record<DocumentStatus, DocumentStatus[]> = {
   draft: ["sent", "void"],
-  sent: ["paid", "accepted", "void", "draft"],
+  sent: ["viewed", "paid", "accepted", "rejected", "overdue", "expired", "void", "draft"],
+  viewed: ["paid", "accepted", "rejected", "overdue", "expired", "void", "draft"],
   paid: ["void"],
   accepted: ["void"],
+  rejected: ["draft", "void"],
+  expired: ["draft", "void"],
+  overdue: ["paid", "void", "draft"],
   void: ["draft"],
+};
+
+export const STATUS_LABELS: Record<DocumentStatus, string> = {
+  draft: "Draft",
+  sent: "Sent",
+  viewed: "Viewed",
+  paid: "Paid",
+  accepted: "Accepted",
+  rejected: "Rejected",
+  expired: "Expired",
+  overdue: "Overdue",
+  void: "Void",
+};
+
+export const ACTIVITY_LABELS: Record<string, string> = {
+  created: "Created",
+  updated: "Edited",
+  status: "Status changed",
+  shared: "Shared",
+  viewed: "Viewed",
+  emailed: "Emailed",
+  duplicated: "Duplicated",
+  trashed: "Moved to trash",
+  restored: "Restored",
+  payment: "Payment",
+  signed: "Signed",
+  reminder: "Reminder",
 };

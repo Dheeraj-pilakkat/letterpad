@@ -24,6 +24,7 @@ export interface ContactRow {
   postalCode?: string;
   country?: string;
   notes?: string;
+  taxId?: string;
 }
 
 const FIELDS = [
@@ -37,6 +38,7 @@ const FIELDS = [
   ["state", "State / region", "text", false],
   ["postalCode", "Postal code", "text", false],
   ["country", "Country", "text", false],
+  ["taxId", "Tax ID / GSTIN", "text", false],
 ] as const;
 
 export function ContactDialog({
@@ -87,8 +89,8 @@ export function ContactDialog({
         onClick={() => setOpen(true)}
         className={
           contact
-            ? "text-sm text-copper hover:underline"
-            : "inline-flex h-10 items-center rounded-[3px] bg-copper px-4 text-sm font-medium text-white hover:bg-copper-soft"
+            ? "text-sm text-royal hover:underline"
+            : "inline-flex h-10 items-center rounded-[3px] bg-royal px-4 text-sm font-medium text-white hover:bg-royal-soft"
         }
       >
         {contact ? contact.name : triggerLabel}

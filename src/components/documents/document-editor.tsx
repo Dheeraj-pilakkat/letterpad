@@ -3,58 +3,89 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Copy, Download, Loader2, Trash2 } from "lucide-react";
-import type { CustomColumn, DocumentStatus, LineItemColumns } from "@/lib/db/types";
+import {
+  Check,
+  Copy,
+  Download,
+  Link2,
+  Loader2,
+  Mail,
+  PenLine,
+  Trash2,
+  X,
+} from "lucide-react";
+import type { CustomColumn, DocumentStatus, DocumentType, LineItemColumns } from "@/lib/db/types";
 import type { PdfContact, PdfDoc, PdfWorkspace } from "@/pdf/DocumentPdf";
+import type { PaymentDTO } from "@/lib/serialize";
 import {
   deleteDocument,
   duplicateDocument,
   updateDocument,
   updateDocumentStatus,
 } from "@/lib/actions/documents";
+import {
+  disableShare,
+  emailDocument,
+  enableShare,
+  sendReviewRequestAction,
+} from "@/lib/actions/sharing";
+import { convertToInvoiceAction } from "@/lib/actions/workflows";
 import { templatesForType } from "@/lib/templates/registry";
 import type { DocumentInput } from "@/lib/validation/schemas";
 import { computeTotals } from "@/lib/validation/schemas";
-import { CURRENCIES } from "@/lib/constants";
+import { CURRENCIES, STATUS_LABELS, VALID_TRANSITIONS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { StatusBadge } from "@/components/ui/badge";
 import { LineItems, type ItemDraft } from "@/components/documents/line-items";
+import { PaymentsPanel } from "@/components/documents/payments-panel";
 import { PdfPreview } from "@/components/documents/pdf-preview";
+import { AiPanel } from "@/components/documents/ai-panel";
+import { DeliveryPanel, type DeliveryDTO } from "@/components/documents/delivery-panel";
+import { WhatsAppButton } from "@/components/documents/whatsapp-button";
 
 export interface EditorDoc extends PdfDoc {
   id: string;
   contactId: string | null;
+  shareEnabled?: boolean;
 }
 
 export interface ContactOption extends PdfContact {
   id: string;
 }
 
-const TRANSITIONS: Array<{ to: DocumentStatus; label: string }> = [
-  { to: "sent", label: "Mark as sent" },
-  { to: "paid", label: "Mark as paid" },
-  { to: "accepted", label: "Mark as accepted" },
-  { to: "void", label: "Void" },
-  { to: "draft", label: "Reopen draft" },
-];
-
 export function DocumentEditor({
   workspace,
   doc,
   contacts,
+  activity,
+  payments,
+  razorpayKeyId,
+  deliveries,
+  aiEnabled,
 }: {
   workspace: PdfWorkspace;
   doc: EditorDoc;
   contacts: ContactOption[];
+  activity?: Array<{
+    id: string;
+    type: string;
+    message: string;
+    createdAt: string;
+  }>;
+  payments?: PaymentDTO[];
+  razorpayKeyId?: string | null;
+  deliveries?: DeliveryDTO[];
+  aiEnabled?: boolean;
 }) {
   const router = useRouter();
   const [saving, startSave] = useTransition();
   const [statusPending, startStatus] = useTransition();
+  const [sharePending, startShare] = useTransition();
+  const [converting, startConvert] = useTransition();
   const [flash, setFlash] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // below lg the form and the PDF preview are shown one at a time
   const [mobileTab, setMobileTab] = useState<"edit" | "preview">("edit");
 
   const template = templatesForType(doc.type).find((t) => t.id === doc.templateId);
@@ -79,6 +110,18 @@ export function DocumentEditor({
       values: values ? { ...values } : undefined,
     })),
   );
+  const [discountType, setDiscountType] = useState<"percent" | "amount">(
+    doc.discount?.type ?? "percent",
+  );
+  const [discountValue, setDiscountValue] = useState(
+    String(doc.discount?.value ?? ""),
+  );
+  const [shareEnabled, setShareEnabled] = useState(doc.shareEnabled ?? false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [emailTo, setEmailTo] = useState(
+    contacts.find((c) => c.id === (doc.contactId ?? ""))?.email ?? "",
+  );
+  const [emailOpen, setEmailOpen] = useState(false);
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>(
     doc.layout.customColumns ?? [],
   );
@@ -101,6 +144,13 @@ export function DocumentEditor({
   );
   const activeKind = activeTemplate?.kind ?? "prose";
 
+  const discountPayload = useMemo(() => {
+    const n = Number(discountValue);
+    if (!discountValue || Number.isNaN(n) || n <= 0) return undefined;
+    if (discountType === "percent" && n > 100) return undefined;
+    return { type: discountType, value: n } as const;
+  }, [discountType, discountValue]);
+
   const previewDoc: PdfDoc = (() => {
     const liveItems =
       activeKind === "itemized"
@@ -109,7 +159,7 @@ export function DocumentEditor({
             amount: Math.round(item.quantity * item.unitPrice * 100) / 100,
           }))
         : [];
-    const totals = computeTotals(liveItems);
+    const totals = computeTotals(liveItems, discountPayload);
     return {
       number: doc.number,
       type: doc.type,
@@ -121,8 +171,10 @@ export function DocumentEditor({
       currency,
       items: liveItems,
       subtotal: totals.subtotal,
+      discountTotal: totals.discountTotal,
       taxTotal: totals.taxTotal,
       total: totals.total,
+      discount: discountPayload,
       content: { subject, body, terms },
       layout: {
         ...activeTemplate?.layout,
@@ -134,6 +186,8 @@ export function DocumentEditor({
   })();
 
   const activeContact = contacts.find((c) => c.id === contactId) ?? null;
+
+  const allowedTargets = VALID_TRANSITIONS[status] ?? [];
 
   function save() {
     setError(null);
@@ -154,6 +208,7 @@ export function DocumentEditor({
         columns,
         accentColor,
         customColumns,
+        discount: discountPayload,
       };
       const res = await updateDocument(doc.id, payload);
       if (!res.ok) {
@@ -179,7 +234,8 @@ export function DocumentEditor({
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this document? This cannot be undone.")) return;
+    if (!confirm("Move this document to trash? You can restore it later."))
+      return;
     const res = await deleteDocument(doc.id);
     if (res.ok) router.push("/app/documents");
     else setError(res.error ?? "Failed to delete");
@@ -190,6 +246,119 @@ export function DocumentEditor({
     if (res.ok && res.id) router.push(`/app/documents/${res.id}`);
     else setError(res.error ?? "Failed to duplicate");
   }
+
+  function toggleShare() {
+    setError(null);
+    startShare(async () => {
+      if (shareEnabled) {
+        const res = await disableShare(doc.id);
+        if (!res.ok) {
+          setError(res.error ?? "Failed to disable sharing");
+          return;
+        }
+        setShareEnabled(false);
+        setShareUrl(null);
+      } else {
+        const res = await enableShare(doc.id);
+        if (!res.ok || !res.url) {
+          setError(res.error ?? "Failed to enable sharing");
+          return;
+        }
+        setShareEnabled(true);
+        setShareUrl(res.url);
+        await navigator.clipboard?.writeText(res.url).catch(() => undefined);
+        setFlash("Share link copied");
+        setTimeout(() => setFlash(null), 2500);
+      }
+      router.refresh();
+    });
+  }
+
+  async function copyShare() {
+    if (!shareUrl) return;
+    await navigator.clipboard?.writeText(shareUrl).catch(() => undefined);
+    setFlash("Copied");
+    setTimeout(() => setFlash(null), 1500);
+  }
+
+  function sendEmail() {
+    setError(null);
+    startShare(async () => {
+      const res = await emailDocument({ id: doc.id, to: emailTo });
+      if (!res.ok) {
+        setError(res.error ?? "Failed to email");
+        return;
+      }
+      if (res.url) {
+        setShareEnabled(true);
+        setShareUrl(res.url);
+      }
+      if (res.mode === "mailto" && res.mailto) {
+        window.location.href = res.mailto;
+        setFlash("Opened your email app");
+      } else {
+        setFlash("Email sent");
+        setEmailOpen(false);
+      }
+      setTimeout(() => setFlash(null), 2500);
+      router.refresh();
+    });
+  }
+
+  function sendReviewRequest(kind: "approval" | "signature") {
+    setError(null);
+    startShare(async () => {
+      const res = await sendReviewRequestAction(doc.id, kind);
+      if (!res.ok) {
+        setError(res.error ?? "Failed to send request");
+        return;
+      }
+      if (res.url) {
+        setShareEnabled(true);
+        setShareUrl(res.url);
+      }
+      if (res.mode === "mailto" && res.mailto) {
+        window.location.href = res.mailto;
+        setFlash(
+          kind === "signature"
+            ? "Signature request draft opened"
+            : "Approval request draft opened",
+        );
+      } else {
+        setFlash(
+          kind === "signature" ? "Signature request sent" : "Approval request sent",
+        );
+        setEmailOpen(false);
+      }
+      setTimeout(() => setFlash(null), 2500);
+      router.refresh();
+    });
+  }
+
+  /** Apply an AI draft to one of the text slots (local state — Save persists). */
+  function applyAi(slot: "subject" | "body" | "terms", text: string) {
+    if (slot === "subject") setSubject(text);
+    else if (slot === "body") setBody(text);
+    else setTerms(text);
+    setFlash("AI draft applied — press Save to keep it");
+    setTimeout(() => setFlash(null), 3000);
+  }
+
+  /** §15 workflow: quotation → invoice. */
+  function handleConvert() {
+    setError(null);
+    startConvert(async () => {
+      const res = await convertToInvoiceAction(doc.id);
+      if (res.ok && res.id) {
+        router.push(`/app/documents/${res.id}`);
+        return;
+      }
+      setError(res.error ?? "Failed to convert quotation");
+    });
+  }
+
+  const convertEligible =
+    doc.type === "quote" && !["void", "rejected", "draft"].includes(status);
 
   return (
     <div>
@@ -208,6 +377,36 @@ export function DocumentEditor({
               <Check size={14} /> {flash}
             </span>
           ) : null}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleShare}
+            disabled={sharePending}
+          >
+            <Link2 size={14} /> {shareEnabled ? "Sharing on" : "Share"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setEmailOpen((v) => !v)}
+          >
+            <Mail size={14} /> Email
+          </Button>
+          <WhatsAppButton
+            docId={doc.id}
+            hasPhone={Boolean(activeContact?.phone)}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => sendReviewRequest("signature")}
+            disabled={sharePending}
+            title="Email the client a request to sign this document"
+          >
+            {sharePending ? <Loader2 size={14} className="animate-spin" /> : null}
+            <PenLine size={14} />{" "}
+            {doc.signature ? "Signed" : doc.signatureRequested ? "Resend signature request" : "Request signature"}
+          </Button>
           <Button variant="outline" size="sm" onClick={handleDuplicate}>
             <Copy size={14} /> Duplicate
           </Button>
@@ -228,6 +427,60 @@ export function DocumentEditor({
         <p className="mb-4 rounded-[3px] bg-red/10 px-3 py-2 text-sm text-red" role="alert">
           {error}
         </p>
+      ) : null}
+
+      {emailOpen ? (
+        <div className="mb-5 rounded-[4px] border border-line bg-white p-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="Send to" className="min-w-48 flex-1">
+              <Input
+                type="email"
+                value={emailTo}
+                onChange={(e) => setEmailTo(e.target.value)}
+                placeholder="client@example.com"
+              />
+            </Field>
+            <Button size="sm" onClick={sendEmail} disabled={sharePending}>
+              {sharePending ? <Loader2 size={14} className="animate-spin" /> : null}
+              Send
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => sendReviewRequest("approval")}
+              disabled={sharePending}
+              title="Email a review-and-approve request"
+            >
+              Send approval request
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setEmailOpen(false)}>
+              <X size={14} /> Close
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-muted">
+            Includes a secure view link. Uses your email provider when configured;
+            otherwise opens your mail app.
+          </p>
+        </div>
+      ) : null}
+
+      {shareEnabled ? (
+        <div className="mb-5 flex flex-wrap items-center gap-2 rounded-[4px] border border-royal/30 bg-royal/5 px-3 py-2 text-sm">
+          <Link2 size={14} className="shrink-0 text-royal" />
+          <a
+            href={shareUrl ?? "#"}
+            target="_blank"
+            rel="noreferrer"
+            className="truncate text-royal underline underline-offset-2"
+          >
+            {shareUrl ?? "Share link active"}
+          </a>
+          {shareUrl ? (
+            <Button variant="ghost" size="sm" onClick={copyShare}>
+              Copy
+            </Button>
+          ) : null}
+        </div>
       ) : null}
 
       {/* mobile: switch between the form and the full-screen preview */}
@@ -336,7 +589,7 @@ export function DocumentEditor({
                 ))}
               </Select>
               {contacts.length === 0 ? (
-                <Link href="/app/contacts" className="mt-1 block text-xs text-copper underline underline-offset-2">
+                <Link href="/app/contacts" className="mt-1 block text-xs text-royal underline underline-offset-2">
                   Add a contact first
                 </Link>
               ) : null}
@@ -390,7 +643,7 @@ export function DocumentEditor({
                         onChange={(e) =>
                           setColumns((c) => ({ ...c, [key]: e.target.checked }))
                         }
-                        className="size-3.5 accent-copper"
+                        className="size-3.5 accent-royal"
                       />
                       {label}
                     </label>
@@ -406,6 +659,34 @@ export function DocumentEditor({
                 customColumns={customColumns}
                 onCustomColumnsChange={setCustomColumns}
               />
+
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <Field label="Discount type">
+                  <Select
+                    value={discountType}
+                    onChange={(e) =>
+                      setDiscountType(e.target.value as "percent" | "amount")
+                    }
+                  >
+                    <option value="percent">Percent (%)</option>
+                    <option value="amount">Fixed amount</option>
+                  </Select>
+                </Field>
+                <Field label="Discount value">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={discountType === "percent" ? 100 : undefined}
+                    step="0.01"
+                    value={discountValue}
+                    onChange={(e) => setDiscountValue(e.target.value)}
+                    placeholder="0"
+                  />
+                </Field>
+                <div className="flex items-end pb-1 text-xs text-muted">
+                  Applied to subtotal before tax
+                </div>
+              </div>
             </section>
           ) : (
             <section className="space-y-4">
@@ -436,31 +717,109 @@ export function DocumentEditor({
             />
           </Field>
 
+          {aiEnabled ? (
+            <AiPanel
+              docType={doc.type}
+              subject={subject}
+              body={body}
+              terms={terms}
+              context={[
+                `${doc.number} (${workspace.name})`,
+                activeContact ? `Client: ${activeContact.name}` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              onApply={applyAi}
+            />
+          ) : null}
+
           {/* status controls */}
           <section className="rounded-[4px] border border-line bg-white p-4">
             <h2 className="mb-1 text-sm font-medium text-ink">Status</h2>
             <p className="mb-3 text-xs text-muted">
-              Current: <span className="capitalize">{status}</span>. Move the
-              document along as you send it and get paid.
+              Current: <span className="capitalize">{STATUS_LABELS[status]}</span>.
+              Move the document along as you send it and get paid.
             </p>
             <div className="flex flex-wrap gap-2">
-              {TRANSITIONS.filter(({ to }) => to !== status).map(({ to, label }) => (
+              {allowedTargets
+                .filter((to) => to !== status)
+                .map((to) => (
+                  <Button
+                    key={to}
+                    variant="outline"
+                    size="sm"
+                    disabled={statusPending}
+                    onClick={() => changeStatus(to)}
+                  >
+                    {to === "draft" ? "Reopen draft" : `Mark as ${STATUS_LABELS[to].toLowerCase()}`}
+                  </Button>
+                ))}
+              {convertEligible ? (
                 <Button
-                  key={to}
                   variant="outline"
                   size="sm"
-                  disabled={statusPending}
-                  onClick={() => changeStatus(to)}
+                  disabled={converting}
+                  onClick={handleConvert}
+                  title="Create a draft invoice from this quotation"
                 >
-                  {label}
+                  {converting ? <Loader2 size={14} className="animate-spin" /> : null}
+                  Convert to invoice
                 </Button>
-              ))}
+              ) : null}
             </div>
           </section>
 
+          {/* payments */}
+          {(["invoice", "quote", "request"] as DocumentType[]).includes(doc.type) ? (
+            <PaymentsPanel
+              docId={doc.id}
+              docNumber={doc.number}
+              docType={doc.type}
+              total={doc.total}
+              currency={currency}
+              status={status}
+              payments={payments ?? []}
+              razorpayKeyId={razorpayKeyId}
+              contactEmail={
+                contacts.find((c) => c.id === (doc.contactId ?? ""))?.email ?? undefined
+              }
+            />
+          ) : null}
+
+          {/* scheduled delivery */}
+          <DeliveryPanel
+            docId={doc.id}
+            defaultTo={
+              contacts.find((c) => c.id === (doc.contactId ?? ""))?.email ?? undefined
+            }
+            deliveries={deliveries ?? []}
+          />
+
+          {/* activity */}
+          {activity && activity.length > 0 ? (
+            <section className="rounded-[4px] border border-line bg-white p-4">
+              <h2 className="mb-3 text-sm font-medium text-ink">Activity</h2>
+              <ol className="space-y-2">
+                {activity.map((a) => (
+                  <li key={a.id} className="flex items-baseline justify-between gap-3 text-xs">
+                    <span className="text-ink">{a.message}</span>
+                    <time className="shrink-0 text-muted">
+                      {new Date(a.createdAt).toLocaleString("en-GB", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </time>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ) : null}
+
           <div className="flex justify-end">
             <Button variant="danger" size="sm" onClick={handleDelete}>
-              <Trash2 size={14} /> Delete document
+              <Trash2 size={14} /> Move to trash
             </Button>
           </div>
         </div>

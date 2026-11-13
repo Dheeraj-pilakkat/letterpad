@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { auth } from "@/lib/auth/config";
 import { collections } from "@/lib/db/client";
-import { toObjectId } from "@/lib/auth/session";
+import { resolveWorkspace, toObjectId } from "@/lib/auth/session";
 import { toPdfContact, toPdfDoc, toPdfWorkspace } from "@/lib/serialize";
 import { DocumentPdf } from "@/pdf/DocumentPdf";
 import { documentLabel } from "@/lib/templates/registry";
@@ -24,12 +24,11 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const workspace = await collections
-    .workspaces()
-    .findOne({ ownerUserId: session.user.id });
-  if (!workspace) {
+  const resolved = await resolveWorkspace(session.user);
+  if (!resolved) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  const workspace = resolved.workspace;
 
   const doc = await collections
     .documents()

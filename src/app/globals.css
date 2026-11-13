@@ -1,19 +1,19 @@
 @import "tailwindcss";
 
 /* ============================================================
-   Letterpad — stationery-desk design system
-   Paper (warm) surfaces, ink type, copper accent.
+   Letterpad — cream-and-royal design system
+   Light cream surfaces, deep ink type, royal blue accent.
    ============================================================ */
 
 @theme {
-  --color-paper: #faf7f2;
-  --color-paper-dim: #f2ede4;
+  --color-paper: #faf6eb;
+  --color-paper-dim: #f1ebd9;
   --color-ink: #1c2536;
   --color-ink-soft: #33405c;
   --color-muted: #5c6470;
-  --color-line: #e4ddd0;
-  --color-copper: #b4552d;
-  --color-copper-soft: #c97a52;
+  --color-line: #e6decb;
+  --color-royal: #4169e1;
+  --color-royal-soft: #6c8cf5;
   --color-forest: #2f5d50;
   --color-red: #b3402f;
   --color-amber: #c9821e;
@@ -21,6 +21,7 @@
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  --font-landing: var(--font-fraunces), Georgia, "Times New Roman", serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
@@ -51,5 +52,5 @@ body {
 }
 
 ::selection {
-  background: rgba(180, 85, 45, 0.2);
+  background: rgba(65, 105, 225, 0.2);
 }

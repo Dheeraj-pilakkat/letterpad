@@ -16,7 +16,7 @@ export default async function OnboardingPage() {
   return (
     <main className="flex min-h-screen items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
-        <p className="mb-2 text-center font-display text-sm tracking-wide text-copper">
+        <p className="mb-2 text-center font-display text-sm tracking-wide text-royal">
           STEP 1 OF 2
         </p>
         <h1 className="mb-1 text-center font-display text-3xl text-ink">

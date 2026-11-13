@@ -37,13 +37,22 @@ export function SignInForm() {
         <Input name="email" type="email" required autoComplete="email" placeholder="you@business.com" />
       </Field>
       <Field label="Password">
-        <Input
-          name="password"
-          type="password"
-          required
-          autoComplete="current-password"
-          placeholder="••••••••"
-        />
+        <div className="relative">
+          <Input
+            name="password"
+            type="password"
+            required
+            autoComplete="current-password"
+            placeholder="••••••••"
+            className="pr-20"
+          />
+          <Link
+            href="/forgot-password"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-royal hover:underline"
+          >
+            Forgot?
+          </Link>
+        </div>
       </Field>
       {error ? (
         <p className="text-sm text-red" role="alert">{error}</p>
@@ -54,7 +63,7 @@ export function SignInForm() {
       </Button>
       <p className="text-center text-sm text-muted">
         New here?{" "}
-        <Link className="text-copper underline underline-offset-2 hover:text-copper-soft" href="/sign-up">
+        <Link className="text-royal underline underline-offset-2 hover:text-royal-soft" href="/sign-up">
           Create an account
         </Link>
       </p>

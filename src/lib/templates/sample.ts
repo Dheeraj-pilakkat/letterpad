@@ -60,7 +60,8 @@ export function sampleDocument(
     templateId.includes("quote") ||
     templateId.includes("invoice") ||
     templateId === "request-payment" ||
-    templateId.includes("receipt");
+    templateId.includes("receipt") ||
+    templateId.includes("note");
 
   const items = itemized
     ? [
@@ -107,6 +108,7 @@ export function sampleDocument(
     currency: "INR",
     items,
     subtotal,
+    discountTotal: 0,
     taxTotal,
     total: Math.round((subtotal + taxTotal + Number.EPSILON) * 100) / 100,
     content: {

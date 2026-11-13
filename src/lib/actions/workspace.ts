@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ObjectId } from "mongodb";
 import { auth } from "@/lib/auth/config";
+import { requireWorkspace } from "@/lib/auth/session";
 import { collections } from "@/lib/db/client";
 import { workspaceSchema } from "@/lib/validation/schemas";
 import { slugify } from "@/lib/utils";
@@ -34,6 +35,41 @@ function parseBrandColors(raw: unknown): string[] | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Numbering maps arrive as flat form fields:
+ *   numberPrefix.invoice=INV  numberStarts.invoice=100
+ */
+function parseNumberMap(
+  raw: unknown,
+  numeric = false,
+): Partial<Record<string, string | number>> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const map = raw as Record<string, unknown>;
+  const out: Partial<Record<string, string | number>> = {};
+  const types = [
+    "letter",
+    "quote",
+    "invoice",
+    "receipt",
+    "request",
+    "creditNote",
+    "debitNote",
+  ] as const;
+  for (const type of types) {
+    const prefix = map[`numberPrefix.${type}`];
+    const start = map[`numberStart.${type}`];
+    if (numeric) {
+      if (start !== undefined && start !== "") {
+        const n = Number(start);
+        if (Number.isFinite(n)) out[type] = n;
+      }
+    } else if (typeof prefix === "string" && prefix.trim()) {
+      out[type] = prefix.trim();
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 export async function createWorkspace(
@@ -85,13 +121,14 @@ export async function createWorkspace(
 export async function updateWorkspace(
   formData: FormData,
 ): Promise<{ error?: string }> {
-  const userId = await requireUserId();
-  const workspace = await collections
-    .workspaces()
-    .findOne({ ownerUserId: userId });
-  if (!workspace) redirect("/onboarding");
+  const { workspace, role } = await requireWorkspace();
+  if (role === "member") {
+    return { error: "Only owners and admins can edit business details" };
+  }
 
   const raw = formDataToObject(formData);
+  const numberPrefixes = parseNumberMap(raw.numberPrefixes);
+  const numberStarts = parseNumberMap(raw.numberStarts, true);
   const parsed = workspaceSchema.safeParse({
     name: raw.name,
     logo: raw.logo || undefined,
@@ -106,19 +143,37 @@ export async function updateWorkspace(
     email: raw.email || undefined,
     website: raw.website || undefined,
     taxId: raw.taxId || undefined,
+    pan: raw.pan || undefined,
+    upiId: raw.upiId || undefined,
+    paymentInstructions: raw.paymentInstructions || undefined,
     bankDetails: raw.bankDetails || undefined,
+    gstEnabled: raw.gstEnabled === "on" || raw.gstEnabled === true,
+    placeOfSupply: raw.placeOfSupply || undefined,
     currency: raw.currency,
     taxRate: raw.taxRate,
+    taxLabel: raw.taxLabel || undefined,
+    taxCountry: raw.taxCountry || undefined,
     brandColor: raw.brandColor,
     brandColors: parseBrandColors(raw.brandColors),
+    numberPrefixes,
+    numberPad: raw.numberPad === "" || raw.numberPad === undefined ? undefined : raw.numberPad,
+    numberStarts,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid details" };
   }
 
   const d = parsed.data;
+  const taxConfig =
+    d.taxLabel || d.taxCountry
+      ? {
+          ...(d.taxLabel ? { label: d.taxLabel } : {}),
+          ...(d.taxCountry ? { country: d.taxCountry } : {}),
+        }
+      : undefined;
+
   await collections.workspaces().updateOne(
-    { _id: workspace._id, ownerUserId: userId },
+    { _id: workspace._id },
     {
       $set: {
         name: d.name,
@@ -134,13 +189,23 @@ export async function updateWorkspace(
         email: d.email || undefined,
         website: d.website || undefined,
         taxId: d.taxId || undefined,
+        pan: d.pan || undefined,
+        upiId: d.upiId || undefined,
+        paymentInstructions: d.paymentInstructions || undefined,
         bankDetails: d.bankDetails || undefined,
+        gstEnabled: d.gstEnabled || undefined,
+        placeOfSupply: d.placeOfSupply || undefined,
         currency: d.currency,
         taxRate: d.taxRate,
         brandColor: d.brandColors?.[0] ?? d.brandColor,
         brandColors: d.brandColors ?? [d.brandColor],
+        numberPrefixes: d.numberPrefixes ?? undefined,
+        numberPad: d.numberPad ?? undefined,
+        numberStarts: d.numberStarts ?? undefined,
+        ...(taxConfig ? { taxConfig } : {}),
         updatedAt: new Date(),
       },
+      ...(taxConfig ? {} : { $unset: { taxConfig: "" } }),
     },
   );
 
@@ -149,8 +214,27 @@ export async function updateWorkspace(
   return {};
 }
 
-export async function switchWorkspace(): Promise<void> {
-  // MVP: one workspace per account — no-op kept for future multi-workspace.
-  redirect("/app");
+/** Save Razorpay Checkout credentials (key id + secret) for online payments. */
+export async function saveRazorpaySettings(formData: FormData): Promise<{ error?: string }> {
+  const { workspace, role } = await requireWorkspace();
+  if (role === "member") {
+    return { error: "Only owners and admins can change payment settings" };
+  }
+
+  const keyId = String(formData.get("razorpayKeyId") ?? "").trim();
+  const keySecret = String(formData.get("razorpayKeySecret") ?? "").trim();
+
+  const $set: Record<string, unknown> = { updatedAt: new Date() };
+  const $unset: Record<string, ""> = {};
+  if (keyId) $set.razorpayKeyId = keyId;
+  else $unset.razorpayKeyId = "";
+  if (keySecret) $set.razorpayKeySecret = keySecret;
+  else $unset.razorpayKeySecret = "";
+
+  await collections
+    .workspaces()
+    .updateOne({ _id: workspace._id }, { $set, $unset });
+  revalidatePath("/app/settings");
+  return {};
 }
 

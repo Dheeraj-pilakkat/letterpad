@@ -5,23 +5,33 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   FileText,
+  FolderKanban,
   LayoutDashboard,
   LogOut,
   Mail,
   Menu,
   Palette,
+  Package,
   Plus,
+  Repeat,
   Settings,
+  ShieldCheck,
   Users,
+  Wallet,
   X,
 } from "lucide-react";
 import { authClient } from "@/components/auth/auth-provider";
+import { WorkspaceSwitcher, type WorkspaceOption } from "@/components/app/workspace-switcher";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/app", label: "Overview", icon: LayoutDashboard },
   { href: "/app/documents", label: "Documents", icon: FileText },
   { href: "/app/contacts", label: "Contacts", icon: Users },
+  { href: "/app/products", label: "Products", icon: Package },
+  { href: "/app/projects", label: "Projects", icon: FolderKanban },
+  { href: "/app/finance", label: "Finance", icon: Wallet },
+  { href: "/app/recurring", label: "Recurring", icon: Repeat },
   { href: "/app/templates", label: "Templates", icon: Palette },
   { href: "/app/company", label: "Letterhead", icon: Mail },
   { href: "/app/settings", label: "Settings", icon: Settings },
@@ -31,10 +41,16 @@ export function Sidebar({
   workspaceName,
   userName,
   userEmail,
+  workspaces,
+  currentWorkspaceId,
+  isAdmin = false,
 }: {
   workspaceName: string;
   userName: string;
   userEmail: string;
+  workspaces: WorkspaceOption[];
+  currentWorkspaceId: string;
+  isAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -92,6 +108,10 @@ export function Sidebar({
     );
   }
 
+  const navItems = isAdmin
+    ? [...NAV, { href: "/admin", label: "Admin", icon: ShieldCheck }]
+    : NAV;
+
   return (
     <>
       {/* ---------- mobile top bar ---------- */}
@@ -107,7 +127,7 @@ export function Sidebar({
         </button>
         <div className="flex min-w-0 flex-1 items-baseline gap-2">
           <Link href="/app" className="shrink-0 font-display text-lg text-ink">
-            Letter<span className="text-copper">pad</span>
+            Letter<span className="text-royal">pad</span>
           </Link>
           <span className="min-w-0 truncate text-xs text-muted" title={workspaceName}>
             {workspaceName}
@@ -116,7 +136,7 @@ export function Sidebar({
         <Link
           href="/app/documents/new"
           aria-label="New document"
-          className="rounded-[3px] bg-copper p-2.5 text-white"
+          className="rounded-[3px] bg-royal p-2.5 text-white"
         >
           <Plus size={18} strokeWidth={2} />
         </Link>
@@ -138,13 +158,17 @@ export function Sidebar({
             className="absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col bg-white shadow-2xl"
           >
             <div className="flex items-center justify-between border-b border-line px-4 py-4">
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <Link href="/app" className="font-display text-xl text-ink">
-                  Letter<span className="text-copper">pad</span>
+                  Letter<span className="text-royal">pad</span>
                 </Link>
-                <p className="truncate text-xs text-muted" title={workspaceName}>
-                  {workspaceName}
-                </p>
+                <div className="mt-1.5">
+                  <WorkspaceSwitcher
+                    workspaces={workspaces}
+                    currentId={currentWorkspaceId}
+                    compact
+                  />
+                </div>
               </div>
               <button
                 ref={closeRef}
@@ -161,11 +185,11 @@ export function Sidebar({
               <Link
                 href="/app/documents/new"
                 onClick={() => setOpen(false)}
-                className="mb-2 flex items-center justify-center gap-2 rounded-[3px] bg-copper px-3 py-2.5 text-sm font-medium text-white"
+                className="mb-2 flex items-center justify-center gap-2 rounded-[3px] bg-royal px-3 py-2.5 text-sm font-medium text-white"
               >
                 <Plus size={16} strokeWidth={2} /> New document
               </Link>
-              {NAV.map(({ href, label, icon: Icon }) => navLink(href, label, Icon))}
+              {navItems.map(({ href, label, icon: Icon }) => navLink(href, label, Icon))}
             </nav>
 
             <div className="border-t border-line p-4">
@@ -191,15 +215,15 @@ export function Sidebar({
       <aside className="hidden w-60 shrink-0 flex-col border-r border-line bg-white md:flex">
         <div className="border-b border-line px-5 py-5">
           <Link href="/app" className="font-display text-xl text-ink">
-            Letter<span className="text-copper">pad</span>
+            Letter<span className="text-royal">pad</span>
           </Link>
-          <p className="mt-1 truncate text-xs text-muted" title={workspaceName}>
-            {workspaceName}
-          </p>
+          <div className="mt-2">
+            <WorkspaceSwitcher workspaces={workspaces} currentId={currentWorkspaceId} />
+          </div>
         </div>
 
         <nav className="flex-1 space-y-0.5 p-3">
-          {NAV.map(({ href, label, icon: Icon }) => navLink(href, label, Icon))}
+          {navItems.map(({ href, label, icon: Icon }) => navLink(href, label, Icon))}
         </nav>
 
         <div className="border-t border-line p-4">

@@ -174,14 +174,43 @@ describe("contactSchema", () => {
 });
 
 describe("VALID_TRANSITIONS", () => {
-  const statuses: DocumentStatus[] = ["draft", "sent", "paid", "accepted", "void"];
+  const allStatuses: DocumentStatus[] = [
+    "draft",
+    "sent",
+    "viewed",
+    "paid",
+    "accepted",
+    "rejected",
+    "expired",
+    "overdue",
+    "void",
+  ];
 
   it("covers every status", () => {
-    for (const s of statuses) expect(VALID_TRANSITIONS[s]).toBeDefined();
+    for (const s of allStatuses) expect(VALID_TRANSITIONS[s]).toBeDefined();
   });
 
   it("draft can only go to sent or void", () => {
-    expect(VALID_TRANSITIONS.draft.sort()).toEqual(["sent", "void"]);
+    expect([...VALID_TRANSITIONS.draft].sort()).toEqual(["sent", "void"]);
+  });
+
+  it("sent may progress through the lifecycle", () => {
+    expect(VALID_TRANSITIONS.sent).toEqual(
+      expect.arrayContaining([
+        "viewed",
+        "paid",
+        "accepted",
+        "rejected",
+        "overdue",
+        "void",
+        "draft",
+      ]),
+    );
+  });
+
+  it("viewed is only entered from sent and never re-entered once terminal", () => {
+    expect(VALID_TRANSITIONS.paid).not.toContain("viewed");
+    expect(VALID_TRANSITIONS.accepted).not.toContain("viewed");
   });
 
   it("paid and accepted are terminal except void", () => {
@@ -195,7 +224,62 @@ describe("VALID_TRANSITIONS", () => {
 
   it("only targets known statuses", () => {
     for (const targets of Object.values(VALID_TRANSITIONS)) {
-      for (const t of targets) expect(statuses).toContain(t);
+      for (const t of targets) expect(allStatuses).toContain(t);
     }
+  });
+
+  it("has no self-transitions", () => {
+    for (const [from, targets] of Object.entries(VALID_TRANSITIONS)) {
+      expect(targets).not.toContain(from);
+    }
+  });
+});
+
+describe("documentSchema discount", () => {
+  it("accepts percent and amount discounts", () => {
+    expect(
+      documentSchema.safeParse({
+        ...validDoc,
+        discount: { type: "percent", value: 10 },
+      }).success,
+    ).toBe(true);
+    expect(
+      documentSchema.safeParse({
+        ...validDoc,
+        discount: { type: "amount", value: 25.5 },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects negative discount values", () => {
+    expect(
+      documentSchema.safeParse({
+        ...validDoc,
+        discount: { type: "percent", value: -5 },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("workspaceSchema payment fields", () => {
+  it("accepts pan, upiId, and paymentInstructions", () => {
+    const parsed = workspaceSchema.safeParse({
+      name: "Acme Studio",
+      currency: "USD",
+      taxRate: 18,
+      brandColor: "#B4552D",
+      pan: "ABCDE1234F",
+      upiId: "acme@okhdfcbank",
+      paymentInstructions: "Pay within 15 days via UPI or bank transfer.",
+    });
+    expect(parsed.success).toBe(true);
+  });
+});
+
+describe("contactSchema taxId", () => {
+  it("accepts an optional taxId", () => {
+    expect(
+      contactSchema.safeParse({ name: "Ada", taxId: "29ABCDE1234F1Z5" }).success,
+    ).toBe(true);
   });
 });
